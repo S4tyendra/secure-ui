@@ -28,10 +28,8 @@ def ic_sink(message):
 logger.remove()
 logger.add(ic_sink, level="DEBUG")
 
-# Make logger available for import
 __all__ = ["logger", "ic"]
 
-# Example usage (won't run when imported)
 if __name__ == "__main__":
     logger.debug("This is a debug message.")
     logger.info("This is an info message.")

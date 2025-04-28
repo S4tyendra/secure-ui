@@ -26,15 +26,11 @@ def check_password(plain_password: str, hashed_password: str) -> bool:
         return False
     try:
         ph.verify(hashed_password, plain_password)
-        # Check if the hash needs to be updated (e.g., parameters changed)
         if ph.check_needs_rehash(hashed_password):
              logger.info(f"Password hash for user needs rehashing.")
-             # In a real app, you might trigger a rehash here upon next login
         return True
     except VerifyMismatchError:
-        # This is expected for incorrect passwords, not an error
         return False
     except Exception as e:
-        # Log other unexpected errors during verification
         logger.error(f"Error verifying password: {e}")
         return False

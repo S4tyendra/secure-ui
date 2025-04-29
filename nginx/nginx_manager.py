@@ -1,11 +1,12 @@
 import os
 import shutil
+import asyncio # Add asyncio for subprocesses
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 
 from config import Config
 from helpers.logger import logger
-from .models import SiteInfo, LogInfo
+from .models import SiteInfo, LogInfo, NginxCommandStatus # Add NginxCommandStatus
 
 
 class NginxManagementError(Exception):
@@ -268,3 +269,73 @@ def update_nginx_conf(content: str) -> None:
     except Exception as e:
         logger.error(f"Unexpected error updating Nginx config: {e}")
         raise NginxManagementError(f"An unexpected error occurred: {e}", 500)
+
+
+# --- Nginx Service Management (Requires sudo) ---
+
+async def _run_nginx_command(command_args: List[str]) -> NginxCommandStatus:
+    """Helper function to run an Nginx command with sudo and capture output."""
+    command_str = " ".join(command_args)
+    logger.info(f"Attempting to run command: {command_str}")
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *command_args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await process.communicate()
+        # Ensure return_code is int, default to -1 if process terminates unexpectedly
+        return_code = process.returncode if process.returncode is not None else -1
+
+        stdout_decoded = stdout.decode('utf-8', errors='ignore').strip() if stdout else None
+        stderr_decoded = stderr.decode('utf-8', errors='ignore').strip() if stderr else None
+
+        success = return_code == 0
+        # Adjust success specifically for 'systemctl status' which returns 3 if inactive
+        if 'systemctl' in command_args and 'status' in command_args and return_code == 3:
+            success = True # Treat inactive status as a 'successful' query in terms of command execution
+            message = f"Command '{command_str}' executed; service is likely inactive (code {return_code})."
+        else:
+             message = f"Command '{command_str}' {'succeeded' if success else 'failed'} with code {return_code}."
+
+        if not success and stderr_decoded:
+            message += f" Error: {stderr_decoded}"
+        elif not success and stdout_decoded: # Some errors go to stdout
+             message += f" Output: {stdout_decoded}"
+
+        logger.info(message)
+        if stdout_decoded: logger.debug(f"STDOUT:\n{stdout_decoded}")
+        if stderr_decoded: logger.debug(f"STDERR:\n{stderr_decoded}")
+
+        return NginxCommandStatus(
+            success=success, # Reflects if the command itself ran okay (or found inactive service)
+            command=command_str,
+            stdout=stdout_decoded,
+            stderr=stderr_decoded,
+            return_code=return_code, # The actual return code
+            message=message
+        )
+
+    except FileNotFoundError:
+        logger.error(f"Command not found: '{command_args[0]}'. Is it installed and in PATH?")
+        raise NginxManagementError(f"Command '{command_args[0]}' not found. Ensure it's installed and accessible.", 500)
+    except Exception as e:
+        logger.exception(f"Error running command '{command_str}': {e}")
+        raise NginxManagementError(f"An unexpected error occurred while running '{command_str}': {e}", 500)
+
+async def test_nginx_config() -> NginxCommandStatus:
+    """Tests the Nginx configuration using 'sudo nginx -t'."""
+    # Consider finding the actual nginx binary path if needed, e.g., shutil.which('nginx')
+    # For now, assuming 'nginx' is in sudo path
+    return await _run_nginx_command(['sudo', 'nginx', '-t'])
+
+async def reload_nginx() -> NginxCommandStatus:
+    """Reloads the Nginx service using 'sudo systemctl reload nginx'."""
+    return await _run_nginx_command(['sudo', 'systemctl', 'reload', 'nginx'])
+
+async def get_nginx_status() -> NginxCommandStatus:
+    """Gets the Nginx service status using 'sudo systemctl status nginx'."""
+    # Note: systemctl status often returns non-zero code even if service is inactive but found.
+    # The success flag in the result will reflect the direct command success (code 0).
+    # Consumers should check stdout/stderr for actual status details.
+    return await _run_nginx_command(['sudo', 'systemctl', 'status', 'nginx'])

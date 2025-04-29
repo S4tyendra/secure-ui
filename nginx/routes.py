@@ -234,3 +234,62 @@ async def update_main_nginx_conf(conf_data: NginxConf, current_user: dict = Curr
     except Exception as e:
          logger.exception("Unexpected error updating main Nginx config")
          raise HTTPException(status_code=500, detail="An unexpected server error occurred.")
+# === Nginx Service Actions ===
+
+@nginx_router.post("/actions/test", response_model=nginx_manager.NginxCommandStatus, summary="Test Nginx Configuration")
+async def test_nginx_configuration(current_user: dict = CurrentUser):
+    """
+    Tests the current Nginx configuration using `sudo nginx -t`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx config test requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.test_nginx_config()
+        # Return status based on command result, even if it failed (e.g., config error)
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error testing Nginx configuration")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred during config test.")
+
+@nginx_router.post("/actions/reload", response_model=nginx_manager.NginxCommandStatus, summary="Reload Nginx Service")
+async def reload_nginx_service(current_user: dict = CurrentUser):
+    """
+    Reloads the Nginx service using `sudo systemctl reload nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx reload requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.reload_nginx()
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error reloading Nginx service")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred during reload.")
+
+@nginx_router.post("/actions/status", response_model=nginx_manager.NginxCommandStatus, summary="Get Nginx Service Status")
+async def get_nginx_service_status(current_user: dict = CurrentUser):
+    """
+    Gets the Nginx service status using `sudo systemctl status nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution (check stdout/stderr for details).
+    Note: Command might succeed even if service is inactive (returns code 3).
+    """
+    try:
+        logger.info(f"Nginx status requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.get_nginx_status()
+        # Status query itself usually succeeds unless command fails fundamentally.
+        # Actual service state is in stdout/stderr/return_code (3 for inactive).
+        response_status = status.HTTP_200_OK
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error getting Nginx status")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred while getting status.")

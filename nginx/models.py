@@ -4,7 +4,7 @@ from typing import List, Optional
 class SiteInfo(BaseModel):
     name: str
     is_enabled: bool
-    content: Optional[str] = None # include content on GET single site
+    content: Optional[str] = None # Optionally include content on GET single site
 
 class SiteCreate(BaseModel):
     name: str = Field(..., pattern=r"^[a-zA-Z0-9._-]+$", description="Site name (filename in sites-available, no spaces or special chars)")
@@ -28,15 +28,23 @@ class SiteActionStatus(BaseModel):
     success: bool
     message: str
     site_name: str
-    action: str # 'created', 'enabled', 'disabled', 'deleted', 'updated'
+    action: str # e.g., 'created', 'enabled', 'disabled', 'deleted', 'updated'
 
 class LogActionStatus(BaseModel):
     success: bool
     message: str
     log_name: str
-    action: str # 'deleted'
+    action: str # e.g., 'deleted'
 
 class ConfActionStatus(BaseModel):
     success: bool
     message: str
-    action: str # 'updated'
+    action: str # e.g., 'updated'
+
+class NginxCommandStatus(BaseModel):
+    success: bool # Based on return code
+    command: str
+    stdout: Optional[str] = None
+    stderr: Optional[str] = None
+    return_code: int
+    message: str # User-friendly summary message

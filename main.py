@@ -1,18 +1,20 @@
 import fastapi as f
 from contextlib import asynccontextmanager
 import os
-from fastapi import staticfiles, Depends
+from fastapi import staticfiles, Depends, Depends
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from fastapi.middleware.cors import CORSMiddleware
+from auth.security import get_current_user 
 
 from db_setup import mongo_manager, get_db, config
 from helpers.logger import logger, ic
 from auth.login import auth_router
 from admin.routes import admin_router
+from nginx.routes import nginx_router
 
 app = f.FastAPI(
     title="Secure UI Backend",
-    # lifespan=lifespan # Consider using lifespan for cleaner startup/shutdown
+    # lifespan=lifespan #lifespan for cleaner startup/shutdown
 )
 
 origins = [
@@ -58,6 +60,7 @@ async def shutdown_event():
 
 app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(admin_router, prefix="/api/admin", tags=["Admin"])
+app.include_router(nginx_router, prefix="/api/nginx", tags=["Nginx Management"], dependencies=[Depends(get_current_user)]) # Add Nginx router
 
 
 static_dir = "dist"

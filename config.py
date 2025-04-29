@@ -6,3 +6,8 @@ class Config:
     APP_PORT: int = 8000
     SESSION_TOKEN_EXPIRE_MINUTES: int = 60 * 24
     ALLOWED_ORIGINS: list[str] = []
+    NGINX_HOST: str = "localhost"
+    NGINX_SITES_AVAILABLE: str = "/etc/nginx/sites-available"
+    NGINX_SITES_ENABLED: str = "/etc/nginx/sites-enabled"
+    NGINX_LOG_DIR: str = "/var/log/nginx"
+    NGINX_CONF_FILE: str = "/etc/nginx/nginx.conf"

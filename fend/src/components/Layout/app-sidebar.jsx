@@ -6,6 +6,7 @@ import {
   BarChartIcon,
   CameraIcon,
   ClipboardListIcon,
+  CodeIcon,
   DatabaseIcon,
   FileCodeIcon,
   FileIcon,
@@ -47,84 +48,38 @@ const data = {
       icon: LayoutDashboardIcon,
     },
     {
-      title: "Lifecycle",
-      url: "#",
-      icon: ListIcon,
-    },
-    {
       title: "Analytics",
       url: "#",
       icon: BarChartIcon,
     },
-    {
-      title: "Projects",
-      url: "#",
-      icon: FolderIcon,
-    },
-    {
-      title: "Team",
-      url: "#",
-      icon: UsersIcon,
-    },
   ],
-  navClouds: [
+  nginx: [
     {
-      title: "Capture",
-      icon: CameraIcon,
-      isActive: true,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
+      name: "Sites",
+      icon: CodeIcon,
+      url: "/dashboard/nginx/sites",
     },
     {
-      title: "Proposal",
+      name: "Config",
       icon: FileTextIcon,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
+      url: "/dashboard/nginx/config",
     },
     {
-      title: "Prompts",
-      icon: FileCodeIcon,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
-          url: "#",
-        },
-        {
-          title: "Archived",
-          url: "#",
-        },
-      ],
+      name: "Logs",
+      icon: FolderIcon,
+      url: "/dashboard/nginx/logs",
     },
+    {
+      name: "Actions",
+      icon: ArrowUpCircleIcon,
+      url: "/dashboard/nginx/actions",
+    }
   ],
   navSecondary: [
     {
       title: "Settings",
       url: "#",
       icon: SettingsIcon,
-    },
-    {
-      title: "Get Help",
-      url: "#",
-      icon: HelpCircleIcon,
     },
     {
       title: "Search",
@@ -167,13 +122,13 @@ export function AppSidebar({ ...props }) {
       </SidebarHeader>
       <SidebarContent>
         <NavMain items={data.navMain} />
-        <NavDocuments items={data.documents} />
-        {/* Add ThemeToggle before NavSecondary */}
-        <SidebarMenuItem className="mt-auto"> {/* Push toggle and NavSecondary down */}
-          <ThemeToggle />
+        <NavDocuments items={data.nginx} title={"Nginx"} />
+        {/* <NavDocuments items={data.documents} title={"Documents"} /> */}
+        <SidebarMenuItem className="mt-auto">
         </SidebarMenuItem>
-        <NavSecondary items={data.navSecondary} /> {/* Remove className="mt-auto" */}
+        <NavSecondary items={data.navSecondary} />
       </SidebarContent>
+      <ThemeToggle />
       <SidebarFooter>
         <NavUser user={data.user} />
       </SidebarFooter>

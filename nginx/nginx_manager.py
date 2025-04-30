@@ -19,10 +19,10 @@ class NginxManagementError(Exception):
 
 def _get_site_path(site_name: str, enabled: bool = False) -> Path:
     """Gets the Path object for a site file."""
+    if '../' in site_name or '/' in site_name:
+        raise NginxManagementError(f"Invalid site name containing path separators: {site_name}", 400)
     base_dir = Path(Config.NGINX_SITES_ENABLED if enabled else Config.NGINX_SITES_AVAILABLE)
     site_file = base_dir / site_name
-    if site_file.resolve().parent != base_dir.resolve():
-         raise NginxManagementError(f"Invalid site name causing path traversal: {site_name}", 400)
     return site_file
 
 def list_sites() -> List[SiteInfo]:
@@ -43,6 +43,8 @@ def list_sites() -> List[SiteInfo]:
                 name=site_file.name,
                 is_enabled=site_file.name in enabled_site_names
             ))
+    from icecream import ic
+    ic(sites)
     return sites
 
 def get_site_info(site_name: str) -> SiteInfo:

@@ -1,108 +1,40 @@
-# IIITK Admin Dashboard
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
 
-This is the admin dashboard for IIITK, built with React, TypeScript, and Vite.
+## Getting Started
 
-## 🚀 Quick Setup
-
-1. Clone the repository
-2. Create a `.env` file in the project root with required variables:
-```env
-VITE_SERVER_URL=your_backend_url_here
-```
-
-## 💻 Development
-
-### Using Bun (Recommended)
+First, run the development server:
 
 ```bash
-# Install bun if not installed
-curl -fsSL https://bun.sh/install | bash
-
-# Install dependencies
-bun install
-
-# Start development server
-bun run dev
-```
-
-### Using npm
-
-```bash
-# Install dependencies
-npm install
-
-# Start development server
 npm run dev
-```
-
-## 🏗️ Self Hosting
-
-1. Build the application:
-```bash
-bun run build
 # or
-npm run build
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
 ```
 
-2. The build output will be in `temp_build/` directory (configured in vite.config.ts)
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-3. Serve the build:
-```bash
-# Using any static file server, e.g.:
-npx serve temp_build
-```
+You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
 
-## 📦 Production Deployment
+[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.js`.
 
-The application builds to `temp_build/` directory. You can deploy this directory to any static hosting service:
+The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
 
-### 1. Using nginx
+This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
-```nginx
-server {
-    listen 80;
-    server_name your-domain.com;
+## Learn More
 
-    root /path/to/temp_build;
-    index index.html;
+To learn more about Next.js, take a look at the following resources:
 
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-}
-```
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
 
-### 2. Using Apache
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
-Create a `.htaccess` file in the build directory:
-```apache
-RewriteEngine On
-RewriteBase /
-RewriteRule ^index\.html$ - [L]
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteCond %{REQUEST_FILENAME} !-l
-RewriteRule . /index.html [L]
-```
+## Deploy on Vercel
 
-### 3. Using Static Hosting Services
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
-The `temp_build` directory can be directly deployed to:
-- Cloudflare Pages (Currently hosted at)
-- Vercel
-- Netlify
-- GitHub Pages
-- AWS S3 + CloudFront
-- Firebase Hosting
-
-Remember to:
-1. Configure environment variables
-2. Set up proper redirects for client-side routing
-3. Configure CORS if needed for API communication
-
-## 🔧 Environment Variables
-
-Required environment variables in `.env`:
-```env
-VITE_SERVER_URL=your_backend_url_here
-```
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.

@@ -8,13 +8,7 @@ export default function NginxActionsPage() {
         <title>Secure UI - Nginx Actions</title>
         <meta name="description" content="Test configuration, reload service, check status" />
       </Head>
-
-      <h1 className="text-3xl font-bold mb-6">Nginx Service Actions</h1>
-
-      <div className=" p-6 rounded shadow">
-        {/* Render the NginxActions component */}
-        <NginxActions />
-      </div>
+      <NginxActions />
     </>
   );
 }

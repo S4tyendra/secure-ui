@@ -1,37 +1,47 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
-let authToken = null; // In-memory token storage
+// Use localStorage for token storage
+const AUTH_TOKEN_KEY = 'authToken';
+
+// Helper function to set item in localStorage
+const setLocalStorageItem = (key, value) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, value);
+};
+
+// Helper function to get item from localStorage
+const getLocalStorageItem = (key) => {
+  if (typeof window === 'undefined') return null;
+  return localStorage.getItem(key);
+};
+
+// Helper function to remove item from localStorage
+const removeLocalStorageItem = (key) => {
+  if (typeof window === 'undefined') return;
+  localStorage.removeItem(key);
+};
+
 
 export const setAuthToken = (token) => {
-  authToken = token;
-  // Optionally persist to localStorage/sessionStorage if needed
-  // localStorage.setItem('authToken', token);
+  if (token) {
+    setLocalStorageItem(AUTH_TOKEN_KEY, token); // Set localStorage item
+  } else {
+    removeLocalStorageItem(AUTH_TOKEN_KEY); // Remove localStorage item if token is null/undefined
+  }
 };
 
 export const getAuthToken = () => {
-  // Optionally retrieve from localStorage/sessionStorage if persisted
-  // return authToken || localStorage.getItem('authToken');
-  return authToken;
+  return getLocalStorageItem(AUTH_TOKEN_KEY); // Get localStorage item
 };
 
 export const clearAuthToken = () => {
-  authToken = null;
-  // Optionally clear from localStorage/sessionStorage
-  // localStorage.removeItem('authToken');
+  removeLocalStorageItem(AUTH_TOKEN_KEY); // Remove localStorage item
 };
 
 const useApi = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-
-  // Effect to load token from storage on initial load (if implemented)
-  // useEffect(() => {
-  //   const storedToken = localStorage.getItem('authToken');
-  //   if (storedToken) {
-  //     authToken = storedToken;
-  //   }
-  // }, []);
 
   const request = useCallback(async (endpoint, options = {}) => {
     setLoading(true);
@@ -42,9 +52,11 @@ const useApi = () => {
       ...options.headers,
     };
 
-    const currentToken = getAuthToken();
+    const currentToken = getAuthToken(); // Now reads from localStorage
+    console.log("Current Token:", currentToken);
     if (currentToken) {
-      headers['X-Login'] = currentToken;
+      // Send token in x-login header
+      headers['x-login'] = currentToken;
     }
 
     try {
@@ -63,7 +75,11 @@ const useApi = () => {
              errorData = { message: response.statusText || `HTTP error! Status: ${response.status}` };
         }
          console.error("API Error Response:", errorData);
-        throw new Error(errorData.detail?.[0]?.msg || errorData.message || `HTTP error! Status: ${response.status}`);
+        // Use optional chaining and provide a default message
+        const detailMsg = errorData.detail?.[0]?.msg;
+        const message = errorData.message;
+        const defaultMsg = `HTTP error! Status: ${response.status}`;
+        throw new Error(detailMsg || message || defaultMsg);
       }
 
       // Handle responses with no content (e.g., 204 No Content)
@@ -82,12 +98,13 @@ const useApi = () => {
 
     } catch (err) {
       console.error('API Request Failed:', err);
+      // Ensure err.message exists, provide a fallback
       setError(err.message || 'An unexpected error occurred.');
       throw err; // Re-throw the error so calling component can handle it
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, []); // Dependencies remain the same
 
   return { loading, error, request, setError };
 };

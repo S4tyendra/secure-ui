@@ -335,6 +335,26 @@ async def reload_nginx() -> NginxCommandStatus:
     """Reloads the Nginx service using 'sudo systemctl reload nginx'."""
     return await _run_nginx_command(['sudo', 'systemctl', 'reload', 'nginx'])
 
+async def restart_nginx() -> NginxCommandStatus:
+    """Restarts the Nginx service using 'sudo systemctl restart nginx'."""
+    return await _run_nginx_command(['sudo', 'systemctl', 'restart', 'nginx'])
+
+async def stop_nginx() -> NginxCommandStatus:
+    """Stops the Nginx service using 'sudo systemctl stop nginx'."""
+    return await _run_nginx_command(['sudo', 'systemctl', 'stop', 'nginx'])
+
+async def start_nginx() -> NginxCommandStatus:
+    """Starts the Nginx service using 'sudo systemctl start nginx'."""
+    return await _run_nginx_command(['sudo', 'systemctl', 'start', 'nginx'])
+
+async def enable_nginx() -> NginxCommandStatus:
+    """Enables the Nginx service to start on boot using 'sudo systemctl enable nginx'."""
+    return await _run_nginx_command(['sudo', 'systemctl', 'enable', 'nginx'])
+
+async def disable_nginx() -> NginxCommandStatus:
+    """Disables the Nginx service from starting on boot using 'sudo systemctl disable nginx'."""
+    return await _run_nginx_command(['sudo', 'systemctl', 'disable', 'nginx'])
+
 async def get_nginx_status() -> NginxCommandStatus:
     """Gets the Nginx service status using 'sudo systemctl status nginx'."""
     # Note: systemctl status often returns non-zero code even if service is inactive but found.

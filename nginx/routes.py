@@ -273,6 +273,97 @@ async def reload_nginx_service(current_user: dict = CurrentUser):
          logger.exception("Unexpected error reloading Nginx service")
          raise HTTPException(status_code=500, detail="An unexpected server error occurred during reload.")
 
+@nginx_router.post("/actions/start", response_model=nginx_manager.NginxCommandStatus, summary="Start Nginx Service")
+async def start_nginx_service(current_user: dict = CurrentUser):
+    """
+    Starts the Nginx service using `sudo systemctl start nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx start requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.start_nginx()
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error starting Nginx service")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred while starting Nginx.")
+    
+@nginx_router.post("/actions/stop", response_model=nginx_manager.NginxCommandStatus, summary="Stop Nginx Service")
+async def stop_nginx_service(current_user: dict = CurrentUser):
+    """
+    Stops the Nginx service using `sudo systemctl stop nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx stop requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.stop_nginx()
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error stopping Nginx service")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred while stopping Nginx.")
+    
+@nginx_router.post("/actions/restart", response_model=nginx_manager.NginxCommandStatus, summary="Restart Nginx Service")
+async def restart_nginx_service(current_user: dict = CurrentUser):
+    """
+    Restarts the Nginx service using `sudo systemctl restart nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx restart requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.restart_nginx()
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error restarting Nginx service")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred while restarting Nginx.")
+
+@nginx_router.post("/actions/enable", response_model=nginx_manager.NginxCommandStatus, summary="Enable Nginx Service")
+async def enable_nginx_service(current_user: dict = CurrentUser):
+    """
+    Enables the Nginx service using `sudo systemctl enable nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx enable requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.enable_nginx()
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error enabling Nginx service")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred while enabling Nginx.")
+    
+@nginx_router.post("/actions/disable", response_model=nginx_manager.NginxCommandStatus, summary="Disable Nginx Service")
+async def disable_nginx_service(current_user: dict = CurrentUser):
+    """
+    Disables the Nginx service using `sudo systemctl disable nginx`.
+    Requires authentication and appropriate sudo permissions for the FastAPI process user.
+    Returns the result of the command execution.
+    """
+    try:
+        logger.info(f"Nginx disable requested by user '{current_user.get('username')}'.")
+        result = await nginx_manager.disable_nginx()
+        response_status = status.HTTP_200_OK if result.success else status.HTTP_400_BAD_REQUEST
+        return Response(content=result.model_dump_json(), status_code=response_status, media_type="application/json")
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+         logger.exception("Unexpected error disabling Nginx service")
+         raise HTTPException(status_code=500, detail="An unexpected server error occurred while disabling Nginx.")
+
+
 @nginx_router.post("/actions/status", response_model=nginx_manager.NginxCommandStatus, summary="Get Nginx Service Status")
 async def get_nginx_service_status(current_user: dict = CurrentUser):
     """

@@ -1,52 +1,18 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/router';
 import useApi from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Trash2, Eye, RefreshCcw } from 'lucide-react'; // Icons
+import { Trash2, Eye, RefreshCw, FileText, ExternalLink, AlertCircle, Loader2 } from 'lucide-react'; // Icons
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // For icon hints
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { format } from 'date-fns'; // For formatting timestamp
 
-// --- Placeholder Dialog Components ---
-const ViewLogDialog = ({ logName, isOpen, onClose }) => {
-    const { request, loading, error, setError } = useApi();
-    const [logContent, setLogContent] = useState('');
-
-    useEffect(() => {
-        if (isOpen && logName) {
-            const fetchLogContent = async () => {
-                setError(null);
-                setLogContent(''); // Clear previous content
-                try {
-                    // Fetch tail of log (e.g., last 100 lines) - returns text
-                    const content = await request(`/nginx/logs/${logName}?tail=100`, {
-                        headers: { 'Accept': 'text/plain' } // Ensure backend returns plain text
-                    });
-                    setLogContent(content || 'Log is empty or could not be read.');
-                } catch (err) {
-                    console.error(`Failed to fetch log content for ${logName}:`, err);
-                     setLogContent(`Error loading log: ${error || err.message}`);
-                }
-            };
-            fetchLogContent();
-        }
-    }, [isOpen, logName, request, setError, error]); // Add error to dependencies
-
-    if (!isOpen) return null;
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center p-4">
-            <div className="bg-white p-6 rounded shadow-lg w-full max-w-3xl h-3/4 flex flex-col">
-                <h3 className="text-lg font-semibold mb-4">View Log: {logName} (Last 100 lines)</h3>
-                <pre className="flex-1 overflow-auto bg-gray-900 text-gray-200 text-xs p-4 rounded mb-4">
-                    {loading ? 'Loading log content...' : logContent}
-                </pre>
-                <Button onClick={onClose} variant="outline" className="self-end">Close</Button>
-            </div>
-        </div>
-    );
-};
-
+// --- Dialog Components ---
 const DeleteLogConfirmDialog = ({ logName, isOpen, onClose, onLogDeleted }) => {
      const { request, loading, error, setError } = useApi();
 
@@ -62,27 +28,37 @@ const DeleteLogConfirmDialog = ({ logName, isOpen, onClose, onLogDeleted }) => {
          }
      };
 
-     if (!isOpen || !logName) return null;
-
+     // Use the Dialog component from shadcn/ui
      return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-             <div className="bg-white p-6 rounded shadow-lg">
-                 <h3 className="text-lg font-semibold mb-2">Confirm Deletion</h3>
-                 <p className="mb-4">Are you sure you want to delete log file <strong>{logName}</strong>? This action cannot be undone.</p>
+         <Dialog open={isOpen} onOpenChange={onClose}>
+             <DialogContent className="bg-white dark:bg-gray-900">
+                 <DialogHeader>
+                     <DialogTitle>Confirm Deletion</DialogTitle>
+                     <DialogDescription>
+                          Are you sure you want to delete log file <strong>{logName}</strong>? This action cannot be undone.
+                     </DialogDescription>
+                 </DialogHeader>
                  {error && (
-                     <Alert variant="destructive" className="mb-4">
-                       <AlertDescription>{error}</AlertDescription>
-                     </Alert>
-                 )}
-                 <div className="flex justify-end space-x-2">
-                    <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
-                    <Button variant="destructive" onClick={handleDelete} disabled={loading}>
-                        {loading ? 'Deleting...' : 'Delete'}
-                    </Button>
-                 </div>
-             </div>
-         </div>
-    );
+                      <Alert variant="destructive" className="mt-4">
+                          <AlertCircle className="h-4 w-4" />
+                          <AlertTitle>Error</AlertTitle>
+                          <AlertDescription>{error}</AlertDescription>
+                      </Alert>
+                  )}
+                 <DialogFooter>
+                     <Button variant="outline" onClick={onClose} disabled={loading}>Cancel</Button>
+                     <Button variant="destructive" onClick={handleDelete} disabled={loading}>
+                         {loading ? (
+                             <>
+                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                 Deleting...
+                             </>
+                         ) : 'Delete'}
+                     </Button>
+                 </DialogFooter>
+             </DialogContent>
+         </Dialog>
+     );
  };
 // --- End Placeholder Dialogs ---
 
@@ -103,9 +79,8 @@ const LogsList = () => {
     const [isFetching, setIsFetching] = useState(false);
 
     // --- Dialog States ---
-    const [isViewOpen, setIsViewOpen] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-    const [selectedLogName, setSelectedLogName] = useState(null); // Log name for view/delete
+    const [selectedLogName, setSelectedLogName] = useState(null); // Log name for delete
 
     // Fetch logs data
     const fetchLogs = useCallback(async () => {
@@ -128,11 +103,9 @@ const LogsList = () => {
     }, [fetchLogs]);
 
     // --- Action Handlers ---
-    const handleOpenView = (logName) => { setSelectedLogName(logName); setIsViewOpen(true); };
+    // --- Action Handlers ---
     const handleOpenDelete = (logName) => { setSelectedLogName(logName); setIsDeleteOpen(true); };
-
     const handleCloseDialogs = () => {
-        setIsViewOpen(false);
         setIsDeleteOpen(false);
         setSelectedLogName(null);
     };
@@ -148,12 +121,12 @@ const LogsList = () => {
                 <div className="flex justify-between items-center mb-4">
                     <h2 className="text-xl font-semibold">Log Files</h2>
                      <Button onClick={fetchLogs} variant="outline" size="icon" disabled={isFetching}>
-                         <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                         <RefreshCw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
                      </Button>
                 </div>
 
                  {error && !isFetching && (
-                     <Alert variant="destructive" className="mb-4">
+                     <Alert className="mb-4">
                        <AlertTitle>Error</AlertTitle>
                        <AlertDescription>{error}</AlertDescription>
                      </Alert>
@@ -170,46 +143,60 @@ const LogsList = () => {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {logs.length === 0 && !isFetching ? (
+                         {isFetching ? (
+                             // Skeleton Loader Rows
+                             Array.from({ length: 3 }).map((_, index) => (
+                                 <TableRow key={`skeleton-${index}`}>
+                                     <TableCell><Skeleton className="h-4 w-[200px]" /></TableCell>
+                                     <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
+                                     <TableCell><Skeleton className="h-4 w-[150px]" /></TableCell>
+                                     <TableCell className="text-right space-x-2">
+                                         <Skeleton className="h-8 w-8 inline-block" />
+                                         <Skeleton className="h-8 w-8 inline-block" />
+                                     </TableCell>
+                                 </TableRow>
+                             ))
+                         ) : logs.length === 0 ? (
                              <TableRow>
                                  <TableCell colSpan={4} className="text-center">No log files found.</TableCell>
                              </TableRow>
-                        ) : (
-                            logs.map((log) => (
-                                <TableRow key={log.name}>
-                                    <TableCell className="font-medium">{log.name}</TableCell>
-                                    <TableCell>{formatBytes(log.size_bytes)}</TableCell>
-                                    <TableCell>
-                                        {log.last_modified ? format(new Date(log.last_modified * 1000), 'Pp') : 'N/A'}
-                                    </TableCell>
-                                    <TableCell className="text-right space-x-2">
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenView(log.name)}>
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent><p>View Log (Tail)</p></TooltipContent>
-                                        </Tooltip>
+                         ) : (
+                             logs.map((log) => (
+                                 <TableRow key={log.name}>
+                                     <TableCell className="font-medium">{log.name}</TableCell>
+                                     <TableCell>{formatBytes(log.size_bytes)}</TableCell>
+                                     <TableCell>
+                                         {log.last_modified ? format(new Date(log.last_modified * 1000), 'Pp') : 'N/A'}
+                                     </TableCell>
+                                     <TableCell className="text-right space-x-2">
                                          <Tooltip>
                                              <TooltipTrigger asChild>
-                                                 <Button variant="ghost" size="icon"  onClick={() => handleOpenDelete(log.name)}>
+                                                 <Button variant="ghost" size="icon" asChild>
+                                                     <Link href={`/dashboard/nginx/logs/${log.name}`}>
+                                                         <Eye className="h-4 w-4" />
+                                                     </Link>
+                                                 </Button>
+                                             </TooltipTrigger>
+                                             <TooltipContent><p>View Log</p></TooltipContent>
+                                         </Tooltip>
+                                         <Tooltip>
+                                             <TooltipTrigger asChild>
+                                                 <Button variant="ghost" size="icon" onClick={() => handleOpenDelete(log.name)}>
                                                      <Trash2 className="h-4 w-4" />
                                                  </Button>
                                              </TooltipTrigger>
                                              <TooltipContent><p>Delete Log</p></TooltipContent>
                                          </Tooltip>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
+                                     </TableCell>
+                                 </TableRow>
+                             ))
+                         )}
+                     </TableBody>
                 </Table>
 
                  {/* Dialogs */}
-                 <ViewLogDialog logName={selectedLogName} isOpen={isViewOpen} onClose={handleCloseDialogs} />
+                 {/* Dialogs */}
                  <DeleteLogConfirmDialog logName={selectedLogName} isOpen={isDeleteOpen} onClose={handleCloseDialogs} onLogDeleted={handleLogDeleted} />
-
             </div>
         </TooltipProvider>
     );

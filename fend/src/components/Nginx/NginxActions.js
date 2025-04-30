@@ -85,10 +85,20 @@ const NginxActions = () => {
     const [testResult, setTestResult] = useState(null);
     const [reloadResult, setReloadResult] = useState(null);
     const [statusResult, setStatusResult] = useState(null);
+    const [startResult, setStartResult] = useState(null);
+    const [stopResult, setStopResult] = useState(null);
+    const [restartResult, setRestartResult] = useState(null);
+    const [enableResult, setEnableResult] = useState(null);
+    const [disableResult, setDisableResult] = useState(null);
 
     const [isTesting, setIsTesting] = useState(false);
     const [isReloading, setIsReloading] = useState(false);
     const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+    const [isStarting, setIsStarting] = useState(false);
+    const [isStopping, setIsStopping] = useState(false);
+    const [isRestarting, setIsRestarting] = useState(false);
+    const [isEnabling, setIsEnabling] = useState(false);
+    const [isDisabling, setIsDisabling] = useState(false);
     
     // Track if any action has been performed for better UX
     const [hasPerformedAction, setHasPerformedAction] = useState(false);
@@ -117,36 +127,70 @@ const NginxActions = () => {
 
     const handleTest = async () => {
         const error = await handleAction('Test Configuration', '/nginx/actions/test', setTestResult, setIsTesting);
-         setReloadResult(null); // Clear other results when running a new action
-         setStatusResult(null);
-         if (error) setTestResult({ error }); // Pass error to display component
+        clearAllResults(['testResult']);
+        if (error) setTestResult({ error });
     };
 
     const handleReload = async () => {
-         const error = await handleAction('Reload Service', '/nginx/actions/reload', setReloadResult, setIsReloading);
-         setTestResult(null);
-         setStatusResult(null);
-         if (error) setReloadResult({ error });
+        const error = await handleAction('Reload Service', '/nginx/actions/reload', setReloadResult, setIsReloading);
+        clearAllResults(['reloadResult']);
+        if (error) setReloadResult({ error });
     };
 
     const handleStatus = async () => {
-         const error = await handleAction('Check Status', '/nginx/actions/status', setStatusResult, setIsCheckingStatus);
-         setTestResult(null);
-         setReloadResult(null);
-         if (error) setStatusResult({ error });
+        const error = await handleAction('Check Status', '/nginx/actions/status', setStatusResult, setIsCheckingStatus);
+        clearAllResults(['statusResult']);
+        if (error) setStatusResult({ error });
+    };
+    
+    const handleStart = async () => {
+        const error = await handleAction('Start Service', '/nginx/actions/start', setStartResult, setIsStarting);
+        clearAllResults(['startResult']);
+        if (error) setStartResult({ error });
+    };
+    
+    const handleStop = async () => {
+        const error = await handleAction('Stop Service', '/nginx/actions/stop', setStopResult, setIsStopping);
+        clearAllResults(['stopResult']);
+        if (error) setStopResult({ error });
+    };
+    
+    const handleRestart = async () => {
+        const error = await handleAction('Restart Service', '/nginx/actions/restart', setRestartResult, setIsRestarting);
+        clearAllResults(['restartResult']);
+        if (error) setRestartResult({ error });
+    };
+    
+    const handleEnable = async () => {
+        const error = await handleAction('Enable Service', '/nginx/actions/enable', setEnableResult, setIsEnabling);
+        clearAllResults(['enableResult']);
+        if (error) setEnableResult({ error });
+    };
+    
+    const handleDisable = async () => {
+        const error = await handleAction('Disable Service', '/nginx/actions/disable', setDisableResult, setIsDisabling);
+        clearAllResults(['disableResult']);
+        if (error) setDisableResult({ error });
+    };
+    
+    // Helper function to clear all results except the one specified
+    const clearAllResults = (excludeList = []) => {
+        if (!excludeList.includes('testResult')) setTestResult(null);
+        if (!excludeList.includes('reloadResult')) setReloadResult(null);
+        if (!excludeList.includes('statusResult')) setStatusResult(null);
+        if (!excludeList.includes('startResult')) setStartResult(null);
+        if (!excludeList.includes('stopResult')) setStopResult(null);
+        if (!excludeList.includes('restartResult')) setRestartResult(null);
+        if (!excludeList.includes('enableResult')) setEnableResult(null);
+        if (!excludeList.includes('disableResult')) setDisableResult(null);
     };
 
-    const isLoading = isTesting || isReloading || isCheckingStatus;
+    const isLoading = isTesting || isReloading || isCheckingStatus || 
+                     isStarting || isStopping || isRestarting || 
+                     isEnabling || isDisabling;
 
     return (
         <div className="transition-all duration-300">
-            <Card className="mb-4 bg-card border-border">
-                <CardContent className="pt-6">
-                    <p className="text-sm text-muted-foreground">
-                        Trigger Nginx service actions. These require appropriate permissions for the backend process user (e.g., sudo without password for nginx/systemctl).
-                    </p>
-                </CardContent>
-            </Card>
             
             {/* Display general API errors if they occur outside specific actions */}
             {apiError && !isLoading && (
@@ -158,10 +202,10 @@ const NginxActions = () => {
             )}
 
             {/* Action Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-4 gap-4 mb-6">
                 {/* Test Action */}
                 <Card className="transition-all hover:shadow-md">
-                    <CardHeader>
+                    <CardHeader className="pb-2">
                         <div className="flex items-center space-x-2">
                             <Zap className="h-5 w-5 text-primary" />
                             <CardTitle>Test Configuration</CardTitle>
@@ -187,37 +231,9 @@ const NginxActions = () => {
                     </CardContent>
                 </Card>
 
-                {/* Reload Action */}
-                <Card className="transition-all hover:shadow-md">
-                    <CardHeader>
-                        <div className="flex items-center space-x-2">
-                            <RefreshCw className="h-5 w-5 text-primary" />
-                            <CardTitle>Reload Service</CardTitle>
-                        </div>
-                        <CardDescription>
-                            Run <code className="bg-muted px-1 rounded">systemctl reload nginx</code> to apply changes.
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Button 
-                            onClick={handleReload} 
-                            disabled={isLoading} 
-                            className="w-full" 
-                            variant={isReloading ? "outline" : "default"}
-                        >
-                            {isReloading ? (
-                                <span className="flex items-center">
-                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                    Reloading...
-                                </span>
-                            ) : "Reload Nginx"}
-                        </Button>
-                    </CardContent>
-                </Card>
-
                 {/* Status Action */}
                 <Card className="transition-all hover:shadow-md">
-                    <CardHeader>
+                    <CardHeader className="pb-2">
                         <div className="flex items-center space-x-2">
                             <Activity className="h-5 w-5 text-primary" />
                             <CardTitle>Check Status</CardTitle>
@@ -242,6 +258,174 @@ const NginxActions = () => {
                         </Button>
                     </CardContent>
                 </Card>
+
+                {/* Reload Action */}
+                <Card className="transition-all hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center space-x-2">
+                            <RefreshCw className="h-5 w-5 text-primary" />
+                            <CardTitle>Reload Service</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Run <code className="bg-muted px-1 rounded">systemctl reload nginx</code>.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button 
+                            onClick={handleReload} 
+                            disabled={isLoading} 
+                            className="w-full" 
+                            variant={isReloading ? "outline" : "default"}
+                        >
+                            {isReloading ? (
+                                <span className="flex items-center">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Reloading...
+                                </span>
+                            ) : "Reload Nginx"}
+                        </Button>
+                    </CardContent>
+                </Card>
+
+                {/* Restart Action */}
+                <Card className="transition-all hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center space-x-2">
+                            <Zap className="h-5 w-5 text-primary" />
+                            <CardTitle>Restart Service</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Run <code className="bg-muted px-1 rounded">systemctl restart nginx</code>.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button 
+                            onClick={handleRestart} 
+                            disabled={isLoading} 
+                            className="w-full" 
+                            variant={isRestarting ? "outline" : "default"}
+                        >
+                            {isRestarting ? (
+                                <span className="flex items-center">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Restarting...
+                                </span>
+                            ) : "Restart Nginx"}
+                        </Button>
+                    </CardContent>
+                </Card>
+                
+                {/* Start Action */}
+                <Card className="transition-all hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center space-x-2">
+                            <Power className="h-5 w-5 text-primary" />
+                            <CardTitle>Start Service</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Run <code className="bg-muted px-1 rounded">systemctl start nginx</code>.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button 
+                            onClick={handleStart} 
+                            disabled={isLoading} 
+                            className="w-full" 
+                            variant={isStarting ? "outline" : "default"}
+                        >
+                            {isStarting ? (
+                                <span className="flex items-center">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Starting...
+                                </span>
+                            ) : "Start Nginx"}
+                        </Button>
+                    </CardContent>
+                </Card>
+                
+                {/* Stop Action */}
+                <Card className="transition-all hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center space-x-2">
+                            <Power className="h-5 w-5 text-destructive" />
+                            <CardTitle>Stop Service</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Run <code className="bg-muted px-1 rounded">systemctl stop nginx</code>.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button 
+                            onClick={handleStop} 
+                            disabled={isLoading} 
+                            className="w-full" 
+                            variant={isStopping ? "outline" : "destructive"}
+                        >
+                            {isStopping ? (
+                                <span className="flex items-center">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Stopping...
+                                </span>
+                            ) : "Stop Nginx"}
+                        </Button>
+                    </CardContent>
+                </Card>
+                
+                {/* Enable Action */}
+                <Card className="transition-all hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center space-x-2">
+                            <CheckCircle className="h-5 w-5 text-primary" />
+                            <CardTitle>Enable Service</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Run <code className="bg-muted px-1 rounded">systemctl enable nginx</code> to start on boot.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button 
+                            onClick={handleEnable} 
+                            disabled={isLoading} 
+                            className="w-full" 
+                            variant={isEnabling ? "outline" : "default"}
+                        >
+                            {isEnabling ? (
+                                <span className="flex items-center">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Enabling...
+                                </span>
+                            ) : "Enable Nginx"}
+                        </Button>
+                    </CardContent>
+                </Card>
+                
+                {/* Disable Action */}
+                <Card className="transition-all hover:shadow-md">
+                    <CardHeader className="pb-2">
+                        <div className="flex items-center space-x-2">
+                            <XCircle className="h-5 w-5 text-destructive" />
+                            <CardTitle>Disable Service</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Run <code className="bg-muted px-1 rounded">systemctl disable nginx</code> to not start on boot.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Button 
+                            onClick={handleDisable} 
+                            disabled={isLoading} 
+                            className="w-full" 
+                            variant={isDisabling ? "outline" : "destructive"}
+                        >
+                            {isDisabling ? (
+                                <span className="flex items-center">
+                                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                    Disabling...
+                                </span>
+                            ) : "Disable Nginx"}
+                        </Button>
+                    </CardContent>
+                </Card>
             </div>
             
             {/* Results Display Section */}
@@ -255,6 +439,15 @@ const NginxActions = () => {
                     />
                 )}
                 
+                {(isCheckingStatus || statusResult || statusResult?.error) && (
+                    <ActionResultDisplay 
+                        title="Nginx Status" 
+                        result={statusResult} 
+                        loading={isCheckingStatus} 
+                        error={statusResult?.error} 
+                    />
+                )}
+                
                 {(isReloading || reloadResult || reloadResult?.error) && (
                     <ActionResultDisplay 
                         title="Nginx Reload" 
@@ -264,12 +457,48 @@ const NginxActions = () => {
                     />
                 )}
                 
-                {(isCheckingStatus || statusResult || statusResult?.error) && (
+                {(isRestarting || restartResult || restartResult?.error) && (
                     <ActionResultDisplay 
-                        title="Nginx Status" 
-                        result={statusResult} 
-                        loading={isCheckingStatus} 
-                        error={statusResult?.error} 
+                        title="Nginx Restart" 
+                        result={restartResult} 
+                        loading={isRestarting} 
+                        error={restartResult?.error} 
+                    />
+                )}
+                
+                {(isStarting || startResult || startResult?.error) && (
+                    <ActionResultDisplay 
+                        title="Nginx Start" 
+                        result={startResult} 
+                        loading={isStarting} 
+                        error={startResult?.error} 
+                    />
+                )}
+                
+                {(isStopping || stopResult || stopResult?.error) && (
+                    <ActionResultDisplay 
+                        title="Nginx Stop" 
+                        result={stopResult} 
+                        loading={isStopping} 
+                        error={stopResult?.error} 
+                    />
+                )}
+                
+                {(isEnabling || enableResult || enableResult?.error) && (
+                    <ActionResultDisplay 
+                        title="Nginx Enable" 
+                        result={enableResult} 
+                        loading={isEnabling} 
+                        error={enableResult?.error} 
+                    />
+                )}
+                
+                {(isDisabling || disableResult || disableResult?.error) && (
+                    <ActionResultDisplay 
+                        title="Nginx Disable" 
+                        result={disableResult} 
+                        loading={isDisabling} 
+                        error={disableResult?.error} 
                     />
                 )}
             </div>

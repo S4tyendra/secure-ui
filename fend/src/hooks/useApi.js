@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 // Use localStorage for token storage
 const AUTH_TOKEN_KEY = 'authToken';
 

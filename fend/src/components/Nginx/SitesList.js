@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router'; // Import useRouter
 import useApi from '@/hooks/useApi';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button'; // Import buttonVariants
+import { Input } from "@/components/ui/input"; // Import Input
+import { Label } from "@/components/ui/label"; // Import Label
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Import Card components
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
@@ -18,29 +20,82 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
     AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Import AlertDialog components
+} from "@/components/ui/alert-dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+    DialogClose // Keep DialogClose if needed for explicit close buttons
+} from "@/components/ui/dialog"; // Import Dialog components
+// Removed Textarea import as it's not needed here anymore
+import { Loader2 } from 'lucide-react'; // For loading spinner
 import Link from 'next/link';
 
-// --- Placeholder Dialog Component (Only Create is needed now) ---
-const CreateSiteDialog = ({ isOpen, onClose, onSiteCreated }) => {
-    if (!isOpen) return null;
-    // Replace with your actual Shadcn Dialog implementation
+// --- Create Site Dialog (Only Name Input) ---
+const CreateSiteDialog = ({ onNameSubmit }) => {
+    const [siteName, setSiteName] = useState('');
+    const [isOpen, setIsOpen] = useState(false); // Control dialog open state internally
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        if (siteName.trim()) {
+            onNameSubmit(siteName.trim());
+            setIsOpen(false); // Close dialog on submit
+            setSiteName(''); // Reset input
+        }
+    };
+
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-            <div className="bg-background p-6 rounded shadow-lg border">
-                <h3 className="text-lg font-semibold mb-4">Create New Nginx Site</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                    (Placeholder: Implement site creation form here)
-                </p>
-                <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={onClose}>Cancel</Button>
-                    <Button onClick={() => { /* Call API to create site */ onSiteCreated(); }}>Create</Button>
-                </div>
-            </div>
-        </div>
-    );
-};
-// --- End Placeholder Dialog ---
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+            <DialogTrigger asChild>
+                <Button>
+                    <PlusCircle className="mr-2 h-4 w-4" /> Create Site
+                </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[425px]">
+                <form onSubmit={handleSubmit}>
+                    <DialogHeader>
+                        <DialogTitle>Create New Nginx Site</DialogTitle>
+                        <DialogDescription>
+                            Enter a name for your new site. Configuration will be done on the next step.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="site-name" className="text-right">
+                                Site Name
+                            </Label>
+                            <Input
+                                id="site-name"
+                                value={siteName}
+                                onChange={(e) => setSiteName(e.target.value)}
+                                className="col-span-3"
+                                placeholder="e.g., my-cool-site.com"
+                                required
+                                pattern="^[a-zA-Z0-9.-]+$" // Basic validation
+                                title="Site name can only contain letters, numbers, dots, and hyphens."
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        {/* DialogClose can be used for a simple cancel button */}
+                        <DialogClose asChild>
+                           <Button type="button" variant="outline">Cancel</Button>
+                        </DialogClose>
+                        <Button type="submit" disabled={!siteName.trim()}>
+                            Next: Configure Site
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
+    ); // Close return statement
+}; // Close CreateSiteDialog component
+// --- End Create Site Dialog ---
 
 
 const SitesList = () => {
@@ -51,12 +106,9 @@ const SitesList = () => {
     const [isToggling, setIsToggling] = useState(null); // Track which site's toggle is loading
     const [isDeleting, setIsDeleting] = useState(null); // Track which site is being deleted
 
+    // No separate dialog state needed now, handled within CreateSiteDialog
 
-    // --- Dialog States ---
-    const [isCreateOpen, setIsCreateOpen] = useState(false);
-    // Edit, View, and Delete dialog states are removed as they are handled differently now
-
-    // Fetch sites data (simplified, only fetches list, not details)
+    // Fetch sites data
     const fetchSites = useCallback(async () => {
         setIsFetching(true);
         setError(null);
@@ -133,12 +185,15 @@ const SitesList = () => {
     };
 
 
-    const handleOpenCreate = () => setIsCreateOpen(true);
-    const handleCloseDialogs = () => setIsCreateOpen(false);
-    const handleSiteCreated = () => { fetchSites(); handleCloseDialogs(); };
+    // Navigate to the site detail page for creation
+    const handleNavigateToCreate = (siteName) => {
+        router.push(`/dashboard/nginx/sites/${encodeURIComponent(siteName)}?create=true`);
+    };
 
-    // Navigate to site detail page
+    // Navigate to site detail page (for existing sites)
     const handleCardClick = (siteName) => {
+        // Ensure we don't trigger this during toggle/delete actions within the card
+        if (isToggling || isDeleting) return;
         router.push(`/dashboard/nginx/sites/${siteName}`);
     };
 
@@ -158,9 +213,8 @@ const SitesList = () => {
                              </TooltipTrigger>
                               <TooltipContent><p>Refresh List</p></TooltipContent>
                          </Tooltip>
-                        <Button onClick={handleOpenCreate} disabled={isFetching || !!isToggling || !!isDeleting}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Create Site
-                        </Button>
+                        {/* Use the CreateSiteDialog component directly */}
+                        <CreateSiteDialog onNameSubmit={handleNavigateToCreate} />
                     </div>
                 </div>
 
@@ -273,8 +327,7 @@ const SitesList = () => {
                     ))}
                 </div>
 
-                 {/* Placeholder Create Dialog */}
-                 <CreateSiteDialog isOpen={isCreateOpen} onClose={handleCloseDialogs} onSiteCreated={handleSiteCreated} />
+                 {/* Create Dialog is now triggered by its own button */}
 
             </div>
         </TooltipProvider>

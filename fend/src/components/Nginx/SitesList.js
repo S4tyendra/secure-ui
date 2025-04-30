@@ -29,39 +29,50 @@ import {
     DialogHeader,
     DialogTitle,
     DialogTrigger,
-    DialogClose // Keep DialogClose if needed for explicit close buttons
+    DialogClose
 } from "@/components/ui/dialog"; // Import Dialog components
-// Removed Textarea import as it's not needed here anymore
+// No Textarea needed as per latest instruction
 import { Loader2 } from 'lucide-react'; // For loading spinner
 import Link from 'next/link';
 
-// --- Create Site Dialog (Only Name Input) ---
-const CreateSiteDialog = ({ onNameSubmit }) => {
+// --- Create Site Dialog ---
+const CreateSiteDialog = ({ isOpen, onClose, onSubmit, isCreating, createError }) => {
     const [siteName, setSiteName] = useState('');
-    const [isOpen, setIsOpen] = useState(false); // Control dialog open state internally
+
+    useEffect(() => {
+        // Reset name when dialog is closed externally
+        if (!isOpen) {
+            setSiteName('');
+        }
+    }, [isOpen]);
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (siteName.trim()) {
-            onNameSubmit(siteName.trim());
-            setIsOpen(false); // Close dialog on submit
-            setSiteName(''); // Reset input
+        if (siteName.trim() && !isCreating) {
+            onSubmit(siteName.trim());
+            // Don't close here, parent will close on success
         }
     };
 
+    // Use onOpenChange to trigger onClose when user clicks outside or hits Esc
+    const handleOpenChange = (open) => {
+        if (!open && !isCreating) { // Prevent closing while submitting
+            onClose();
+        }
+        // Note: We don't control the `open` state directly here anymore,
+        // it's managed by the parent via the `isOpen` prop.
+    };
+
     return (
-        <Dialog open={isOpen} onOpenChange={setIsOpen}>
-            <DialogTrigger asChild>
-                <Button>
-                    <PlusCircle className="mr-2 h-4 w-4" /> Create Site
-                </Button>
-            </DialogTrigger>
+        <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+            {/* The Trigger is now managed by the parent SitesList */}
+            {/* <DialogTrigger asChild>...</DialogTrigger> */}
             <DialogContent className="sm:max-w-[425px]">
                 <form onSubmit={handleSubmit}>
                     <DialogHeader>
                         <DialogTitle>Create New Nginx Site</DialogTitle>
                         <DialogDescription>
-                            Enter a name for your new site. Configuration will be done on the next step.
+                            Enter a name for the new site. A basic configuration file will be created.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -76,18 +87,28 @@ const CreateSiteDialog = ({ onNameSubmit }) => {
                                 className="col-span-3"
                                 placeholder="e.g., my-cool-site.com"
                                 required
+                                disabled={isCreating}
                                 pattern="^[a-zA-Z0-9.-]+$" // Basic validation
                                 title="Site name can only contain letters, numbers, dots, and hyphens."
                             />
                         </div>
                     </div>
+                    {createError && (
+                        <Alert variant="destructive" className="mb-4">
+                          <AlertTriangle className="h-4 w-4" />
+                          <AlertTitle>Creation Failed</AlertTitle>
+                          <AlertDescription>
+                            {typeof createError === 'string' ? createError : 'An unexpected error occurred.'}
+                          </AlertDescription>
+                        </Alert>
+                    )}
                     <DialogFooter>
-                        {/* DialogClose can be used for a simple cancel button */}
-                        <DialogClose asChild>
-                           <Button type="button" variant="outline">Cancel</Button>
-                        </DialogClose>
-                        <Button type="submit" disabled={!siteName.trim()}>
-                            Next: Configure Site
+                        <Button type="button" variant="outline" onClick={onClose} disabled={isCreating}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" disabled={!siteName.trim() || isCreating}>
+                            {isCreating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            {isCreating ? 'Creating...' : 'Create Site'}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -106,13 +127,16 @@ const SitesList = () => {
     const [isToggling, setIsToggling] = useState(null); // Track which site's toggle is loading
     const [isDeleting, setIsDeleting] = useState(null); // Track which site is being deleted
 
-    // No separate dialog state needed now, handled within CreateSiteDialog
+    // State for Create Dialog
+    const [isCreateOpen, setIsCreateOpen] = useState(false);
+    const [isCreating, setIsCreating] = useState(false);
+    const [createError, setCreateError] = useState(null);
 
     // Fetch sites data
     const fetchSites = useCallback(async () => {
-        setIsFetching(true);
-        setError(null);
-        try {
+        try { // Add missing try block
+            setIsFetching(true);
+            setError(null);
             // Only fetch the list of sites
             const siteListData = await request('/nginx/sites');
             if (siteListData && Array.isArray(siteListData)) {
@@ -135,8 +159,8 @@ const SitesList = () => {
     }, [fetchSites]);
 
     // --- Action Handlers ---
-    const handleEnableToggle = async (siteName, currentStatus, e) => {
-        e.stopPropagation(); // Prevent card click navigation
+    const handleEnableToggle = async (siteName, currentStatus) => { // Remove 'e' parameter
+        // e.stopPropagation(); // Removed - propagation stopped by wrapper div onClick
         const newStatus = !currentStatus;
         setError(null);
         setIsToggling(siteName); // Set loading state for this specific toggle
@@ -185,9 +209,32 @@ const SitesList = () => {
     };
 
 
-    // Navigate to the site detail page for creation
-    const handleNavigateToCreate = (siteName) => {
-        router.push(`/dashboard/nginx/sites/${encodeURIComponent(siteName)}?create=true`);
+    // Handle Site Creation
+    const handleCreateSite = async (siteName) => {
+        setIsCreating(true);
+        setCreateError(null);
+        const defaultContent = `# /etc/nginx/sites-available/${siteName}\n\nserver {\n\tlisten 80;\n\tserver_name ${siteName};\n\n\tlocation / {\n\t\t# Example: proxy to a backend service\n\t\t# proxy_pass http://localhost:3000;\n\t\t# Example: serve static files\n\t\t# root /var/www/${siteName};\n\t\t# index index.html index.htm;\n\t}\n}`;
+
+        try {
+            const result = await request('/nginx/sites', {
+                method: 'POST',
+                body: JSON.stringify({ name: siteName, content: defaultContent }),
+            });
+
+            if (result && result.success && result.site_name) {
+                setIsCreateOpen(false); // Close dialog on success
+                await fetchSites(); // Refresh the list
+                router.push(`/dashboard/nginx/sites/${encodeURIComponent(result.site_name)}`); // Navigate to new site
+            } else {
+                // Handle cases where API returns success: false or unexpected structure
+                setCreateError(result?.message || 'Failed to create site. Please check the name and try again.');
+            }
+        } catch (err) {
+            console.error("Failed to create site:", err);
+            setCreateError(err.message || 'An unexpected error occurred during site creation.');
+        } finally {
+            setIsCreating(false);
+        }
     };
 
     // Navigate to site detail page (for existing sites)
@@ -211,10 +258,12 @@ const SitesList = () => {
                                      <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
                                  </Button>
                              </TooltipTrigger>
-                              <TooltipContent><p>Refresh List</p></TooltipContent>
+                             <TooltipContent><p>Refresh List</p></TooltipContent>
                          </Tooltip>
-                        {/* Use the CreateSiteDialog component directly */}
-                        <CreateSiteDialog onNameSubmit={handleNavigateToCreate} />
+                        {/* Button to open the Create Dialog */}
+                        <Button onClick={() => { setIsCreateOpen(true); setCreateError(null); }} disabled={isFetching || !!isToggling || !!isDeleting}>
+                           <PlusCircle className="mr-2 h-4 w-4" /> Create Site
+                        </Button>
                     </div>
                 </div>
 
@@ -262,11 +311,11 @@ const SitesList = () => {
                                 <div className="flex items-center space-x-2">
                                      <Tooltip>
                                          <TooltipTrigger asChild>
-                                            
+
                                             <div onClick={(e) => e.stopPropagation()}>
                                                 <Switch
                                                     checked={site.is_enabled}
-                                                    onCheckedChange={(checked) => handleEnableToggle(site.name, !checked, event)}
+                                                    onCheckedChange={(checked) => handleEnableToggle(site.name, site.is_enabled)} // Pass current status directly, remove event
                                                     aria-label={`Toggle ${site.name}`}
                                                     disabled={isToggling === site.name || isFetching || !!isDeleting}
                                                     className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-secondary"
@@ -327,11 +376,17 @@ const SitesList = () => {
                     ))}
                 </div>
 
-                 {/* Create Dialog is now triggered by its own button */}
+                 {/* Create Site Dialog Component */}
+                 <CreateSiteDialog
+                     isOpen={isCreateOpen}
+                     onClose={() => setIsCreateOpen(false)}
+                     onSubmit={handleCreateSite}
+                     isCreating={isCreating}
+                     createError={createError}
+                 />
 
             </div>
         </TooltipProvider>
-    );
-};
-
+    ); // Close return statement
+}; // Close SitesList component
 export default SitesList;

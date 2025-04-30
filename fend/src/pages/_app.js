@@ -1,8 +1,27 @@
-import '@/styles/globals.css' // Import global styles
+import '@/styles/globals.css';
+import { useRouter } from 'next/router';
+import { ThemeProvider } from 'next-themes'; 
+
+const isDashboardPage = (pathname) => {
+    return pathname.startsWith('/dashboard');
+};
 
 function MyApp({ Component, pageProps }) {
-  // You can add Layout components, context providers, etc. here
-  return <Component {...pageProps} />
+    const router = useRouter();
+
+    const PageComponent = isDashboardPage(router.pathname) ? (
+        
+            <Component {...pageProps} />
+        
+    ) : (
+        <Component {...pageProps} />
+    );
+
+    return (
+        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+            {PageComponent}
+        </ThemeProvider>
+    );
 }
 
-export default MyApp
+export default MyApp;

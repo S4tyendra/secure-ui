@@ -262,7 +262,7 @@ const NginxConfEditor = () => {
                             </TabsList>
                             <TabsContent value="editor" className="data-[state=active]:h-full m-0 border-none">
                                 <MonacoEditor
-                                    height="65vh"
+                                    height="100%"
                                     language="nginx"
                                     theme={editorTheme}
                                     value={content}
@@ -288,7 +288,7 @@ const NginxConfEditor = () => {
                     </CardContent>
                 </Card>
 
-                <p className="text-xs text-muted-foreground mt-12">
+                <p className="text-xs text-muted-foreground">
                     Note: Saving changes here updates the main nginx.conf file. Use with caution. A backup (.bak) should be created by the server.
                 </p>
 

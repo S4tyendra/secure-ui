@@ -1,77 +1,79 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/router'; // Import useRouter
 import useApi from '@/hooks/useApi';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge"; // For enabled/disabled status
-import { Switch } from "@/components/ui/switch"; // For enable/disable toggle
-import { Trash2, Edit, PlusCircle, Eye, RefreshCcw } from 'lucide-react'; // Icons
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // For errors
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"; // For icon hints
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"; // Import Card components
+import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Trash2, PlusCircle, RefreshCcw, AlertTriangle } from 'lucide-react'; // Updated icons
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Import AlertDialog components
+import Link from 'next/link';
 
-// --- Placeholder Dialog Components ---
-// These would typically be Shadcn Dialog components implemented separately
+// --- Placeholder Dialog Component (Only Create is needed now) ---
 const CreateSiteDialog = ({ isOpen, onClose, onSiteCreated }) => {
     if (!isOpen) return null;
-    return <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"> <div className="bg-white p-6 rounded shadow-lg"> Create Site Dialog <Button onClick={onClose}>Close</Button> </div> </div>;
+    // Replace with your actual Shadcn Dialog implementation
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+            <div className="bg-background p-6 rounded shadow-lg border">
+                <h3 className="text-lg font-semibold mb-4">Create New Nginx Site</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                    (Placeholder: Implement site creation form here)
+                </p>
+                <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={onClose}>Cancel</Button>
+                    <Button onClick={() => { /* Call API to create site */ onSiteCreated(); }}>Create</Button>
+                </div>
+            </div>
+        </div>
+    );
 };
-const EditSiteDialog = ({ site, isOpen, onClose, onSiteUpdated }) => {
-     if (!isOpen || !site) return null;
-     return <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"> <div className="bg-white p-6 rounded shadow-lg"> Edit Site: {site.name} <Button onClick={onClose}>Close</Button> </div> </div>;
- };
-const ViewSiteDialog = ({ site, isOpen, onClose }) => {
-     if (!isOpen || !site) return null;
-     return <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"> <div className="bg-white p-6 rounded shadow-lg"> View Site: {site.name} <pre className="mt-2 bg-gray-100 p-2 rounded text-sm">{site.content || 'No content available'}</pre> <Button onClick={onClose}>Close</Button> </div> </div>;
- };
-const DeleteSiteConfirmDialog = ({ siteName, isOpen, onClose, onSiteDeleted }) => {
-     if (!isOpen || !siteName) return null;
-     return <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center"> <div className="bg-white p-6 rounded shadow-lg"> Delete Site: {siteName}? <Button variant="destructive" onClick={() => { /* onSiteDeleted(); */ onClose(); }}>Confirm</Button> <Button onClick={onClose}>Cancel</Button> </div> </div>;
- };
-// --- End Placeholder Dialogs ---
+// --- End Placeholder Dialog ---
 
 
 const SitesList = () => {
     const { request, loading, error, setError } = useApi();
+    const router = useRouter(); // Initialize router
     const [sites, setSites] = useState([]);
-    const [isFetching, setIsFetching] = useState(false); // Specific loading state for fetch
+    const [isFetching, setIsFetching] = useState(false);
+    const [isToggling, setIsToggling] = useState(null); // Track which site's toggle is loading
+    const [isDeleting, setIsDeleting] = useState(null); // Track which site is being deleted
+
 
     // --- Dialog States ---
     const [isCreateOpen, setIsCreateOpen] = useState(false);
-    const [isEditOpen, setIsEditOpen] = useState(false);
-    const [isViewOpen, setIsViewOpen] = useState(false);
-    const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-    const [selectedSite, setSelectedSite] = useState(null); // Site for edit/view/delete
+    // Edit, View, and Delete dialog states are removed as they are handled differently now
 
-    // Fetch sites data
+    // Fetch sites data (simplified, only fetches list, not details)
     const fetchSites = useCallback(async () => {
         setIsFetching(true);
         setError(null);
         try {
-            // Fetch details for each site individually to get content (can be slow for many sites)
-            // Alternative: Backend returns content in the list endpoint if feasible
+            // Only fetch the list of sites
             const siteListData = await request('/nginx/sites');
             if (siteListData && Array.isArray(siteListData)) {
-                const sitesWithDetails = await Promise.all(
-                     siteListData.map(async (site) => {
-                        try {
-                             // Fetch detailed info including content
-                             const detailedSite = await request(`/nginx/sites/${site.name}`);
-                             return detailedSite;
-                        } catch (detailError) {
-                             console.error(`Failed to fetch details for site ${site.name}:`, detailError);
-                             return { ...site, content: null, error: 'Failed to load details' }; // Keep basic info
-                        }
-                     })
-                );
-                setSites(sitesWithDetails);
+                setSites(siteListData); // Assumes API returns { name: string, is_enabled: boolean }
             } else {
-                 setSites([]);
+                setSites([]);
             }
-
         } catch (err) {
             console.error("Failed to fetch sites list:", err);
+            setError(err.message || 'Failed to load sites.');
             setSites([]);
         } finally {
-             setIsFetching(false);
+            setIsFetching(false);
         }
     }, [request, setError]);
 
@@ -81,57 +83,90 @@ const SitesList = () => {
     }, [fetchSites]);
 
     // --- Action Handlers ---
-     const handleEnableToggle = async (siteName, currentStatus) => {
-         const newStatus = !currentStatus;
-         setError(null);
-         try {
-             await request(`/nginx/sites/${siteName}`, {
-                 method: 'PUT',
-                 body: JSON.stringify({ enable: newStatus }),
-             });
-             fetchSites(); // Refresh list after toggle
-         } catch (err) {
-              console.error(`Failed to ${newStatus ? 'enable' : 'disable'} site ${siteName}:`, err);
-         }
-     };
-
-    const handleOpenCreate = () => setIsCreateOpen(true);
-    const handleOpenEdit = (site) => { setSelectedSite(site); setIsEditOpen(true); };
-    const handleOpenView = (site) => { setSelectedSite(site); setIsViewOpen(true); };
-    const handleOpenDelete = (siteName) => { setSelectedSite({ name: siteName }); setIsDeleteOpen(true); };
-
-    const handleCloseDialogs = () => {
-        setIsCreateOpen(false);
-        setIsEditOpen(false);
-        setIsViewOpen(false);
-        setIsDeleteOpen(false);
-        setSelectedSite(null);
+    const handleEnableToggle = async (siteName, currentStatus, e) => {
+        e.stopPropagation(); // Prevent card click navigation
+        const newStatus = !currentStatus;
+        setError(null);
+        setIsToggling(siteName); // Set loading state for this specific toggle
+        try {
+            await request(`/nginx/sites/${siteName}`, {
+                method: 'PUT',
+                body: JSON.stringify({ enable: newStatus }),
+            });
+            // Update local state immediately for better UX
+            setSites(prevSites =>
+                prevSites.map(site =>
+                    site.name === siteName ? { ...site, is_enabled: newStatus } : site
+                )
+            );
+            // Optionally refetch to confirm, but local update is faster
+            // fetchSites();
+        } catch (err) {
+            console.error(`Failed to ${newStatus ? 'enable' : 'disable'} site ${siteName}:`, err);
+            setError(`Failed to ${newStatus ? 'enable' : 'disable'} ${siteName}.`);
+            // Revert local state on error
+            setSites(prevSites =>
+                 prevSites.map(site =>
+                     site.name === siteName ? { ...site, is_enabled: currentStatus } : site
+                 )
+            );
+        } finally {
+            setIsToggling(null); // Clear loading state
+        }
     };
 
-    // Placeholder callbacks for dialogs
+    const handleDeleteSite = async (siteName) => {
+        setError(null);
+        setIsDeleting(siteName);
+        try {
+            await request(`/nginx/sites/${siteName}`, {
+                method: 'DELETE',
+            });
+            // Remove site from local state
+            setSites(prevSites => prevSites.filter(site => site.name !== siteName));
+        } catch (err) {
+            console.error(`Failed to delete site ${siteName}:`, err);
+            setError(`Failed to delete site ${siteName}.`);
+        } finally {
+             setIsDeleting(null);
+        }
+    };
+
+
+    const handleOpenCreate = () => setIsCreateOpen(true);
+    const handleCloseDialogs = () => setIsCreateOpen(false);
     const handleSiteCreated = () => { fetchSites(); handleCloseDialogs(); };
-    const handleSiteUpdated = () => { fetchSites(); handleCloseDialogs(); };
-    const handleSiteDeleted = () => { fetchSites(); handleCloseDialogs(); };
+
+    // Navigate to site detail page
+    const handleCardClick = (siteName) => {
+        router.push(`/dashboard/nginx/sites/${siteName}`);
+    };
 
 
     // --- Render Logic ---
     return (
         <TooltipProvider>
             <div>
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-xl font-semibold">Available Sites</h2>
-                    <div>
-                         <Button onClick={fetchSites} variant="outline" size="icon" className="mr-2" disabled={isFetching}>
-                             <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
-                         </Button>
-                        <Button onClick={handleOpenCreate} disabled={isFetching}>
-                            <PlusCircle className="mr-2 h-4 w-4" /> Create New Site
+                <div className="flex justify-between items-center mb-6">
+                    <h2 className="text-2xl font-bold tracking-tight">Nginx Sites</h2>
+                    <div className="flex items-center gap-2">
+                         <Tooltip>
+                             <TooltipTrigger asChild>
+                                 <Button onClick={fetchSites} variant="outline" size="icon" disabled={isFetching || !!isToggling || !!isDeleting}>
+                                     <RefreshCcw className={`h-4 w-4 ${isFetching ? 'animate-spin' : ''}`} />
+                                 </Button>
+                             </TooltipTrigger>
+                              <TooltipContent><p>Refresh List</p></TooltipContent>
+                         </Tooltip>
+                        <Button onClick={handleOpenCreate} disabled={isFetching || !!isToggling || !!isDeleting}>
+                            <PlusCircle className="mr-2 h-4 w-4" /> Create Site
                         </Button>
                     </div>
                 </div>
 
-                 {error && !isFetching && ( // Only show error if not currently fetching
+                 {error && !isFetching && (
                      <Alert variant="destructive" className="mb-4">
+                       <AlertTriangle className="h-4 w-4" />
                        <AlertTitle>Error</AlertTitle>
                        <AlertDescription>
                          {error}
@@ -139,83 +174,107 @@ const SitesList = () => {
                      </Alert>
                  )}
 
-                <Table>
-                    <TableCaption>A list of your Nginx sites. {isFetching ? 'Loading...' : ''}</TableCaption>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Site Name</TableHead>
-                            <TableHead>Status</TableHead>
-                            <TableHead>Enabled</TableHead>
-                            <TableHead className="text-right">Actions</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {sites.length === 0 && !isFetching ? (
-                             <TableRow>
-                                 <TableCell colSpan={4} className="text-center">No sites found.</TableCell>
-                             </TableRow>
-                        ) : (
-                            sites.map((site) => (
-                                <TableRow key={site.name}>
-                                    <TableCell className="font-medium">{site.name}</TableCell>
-                                    <TableCell>
-                                        <Badge variant={site.is_enabled ? "success" : "secondary"}>
-                                            {site.is_enabled ? 'Enabled' : 'Disabled'}
-                                        </Badge>
-                                    </TableCell>
-                                    <TableCell>
-                                         <Tooltip>
-                                             <TooltipTrigger asChild>
-                                                {/* Disable switch while fetching to prevent race conditions */}
-                                                 <Switch
-                                                     checked={site.is_enabled}
-                                                     onCheckedChange={() => handleEnableToggle(site.name, site.is_enabled)}
-                                                     aria-label={`Toggle ${site.name}`}
-                                                     disabled={isFetching}
-                                                 />
-                                             </TooltipTrigger>
-                                             <TooltipContent>
-                                                 <p>{site.is_enabled ? 'Disable' : 'Enable'} site</p>
-                                             </TooltipContent>
-                                         </Tooltip>
-                                    </TableCell>
-                                    <TableCell className="text-right space-x-2">
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenView(site)} disabled={!site.content && !site.error}>
-                                                    <Eye className="h-4 w-4" />
-                                                </Button>
-                                            </TooltipTrigger>
-                                            <TooltipContent><p>View Config</p></TooltipContent>
-                                        </Tooltip>
-                                        <Tooltip>
-                                             <TooltipTrigger asChild>
-                                                <Button variant="ghost" size="icon" onClick={() => handleOpenEdit(site)} disabled={!site.content && !site.error}>
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                             </TooltipTrigger>
-                                             <TooltipContent><p>Edit Config</p></TooltipContent>
-                                         </Tooltip>
-                                         <Tooltip>
-                                             <TooltipTrigger asChild>
-                                                 <Button variant="destructive" size="icon" onClick={() => handleOpenDelete(site.name)}>
-                                                     <Trash2 className="h-4 w-4" />
-                                                 </Button>
-                                             </TooltipTrigger>
-                                             <TooltipContent><p>Delete Site</p></TooltipContent>
-                                         </Tooltip>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
+                 {isFetching && sites.length === 0 && (
+                      <div className="text-center text-muted-foreground py-8">Loading sites...</div>
+                 )}
 
-                 {/* Placeholder Dialogs */}
+                 {!isFetching && sites.length === 0 && !error && (
+                      <div className="text-center text-muted-foreground py-8 border border-dashed rounded-lg">
+                          No Nginx sites found. Click &quot;Create Site&quot; to add one.
+                      </div>
+                 )}
+
+                {/* Grid Layout for Site Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {sites.map((site) => (
+                        <Card
+                            key={site.name}
+                            className="hover:shadow-md transition-shadow duration-200 cursor-pointer group"
+                            asChild
+                        >
+                            <Link
+                                href={`/dashboard/nginx/sites/${site.name}`}
+                            >
+                            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                                <CardTitle className="text-base font-medium truncate group-hover:text-primary">
+                                    {site.name}
+                                </CardTitle>
+                                <Badge variant={site.is_enabled ? "default" : "outline"} className="text-xs">
+                                    {site.is_enabled ? 'Enabled' : 'Disabled'}
+                                </Badge>
+                            </CardHeader>
+                            </Link>
+                            <CardContent className="flex items-center justify-between pt-2">
+                                <div className="flex items-center space-x-2">
+                                     <Tooltip>
+                                         <TooltipTrigger asChild>
+                                            
+                                            <div onClick={(e) => e.stopPropagation()}>
+                                                <Switch
+                                                    checked={site.is_enabled}
+                                                    onCheckedChange={(checked) => handleEnableToggle(site.name, !checked, event)}
+                                                    aria-label={`Toggle ${site.name}`}
+                                                    disabled={isToggling === site.name || isFetching || !!isDeleting}
+                                                    className="data-[state=checked]:bg-primary data-[state=unchecked]:bg-secondary"
+                                                />
+                                            </div>
+                                         </TooltipTrigger>
+                                         <TooltipContent>
+                                             <p>{site.is_enabled ? 'Click to Disable' : 'Click to Enable'}</p>
+                                         </TooltipContent>
+                                     </Tooltip>
+                                     <span className="text-xs text-muted-foreground">
+                                        { isToggling === site.name ? 'Updating...' : (site.is_enabled ? 'Enabled' : 'Disabled') }
+                                     </span>
+                                </div>
+
+                                {/* Delete Button with Confirmation */}
+                                <AlertDialog>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            {/* Wrap Button in a div to stop propagation */}
+                                            <div onClick={(e) => e.stopPropagation()}>
+                                                <AlertDialogTrigger asChild>
+                                                    <Button
+                                                        variant="destructive"
+                                                        size="icon"
+                                                        className=" hover:text-destructive h-7 w-7"
+                                                        disabled={isDeleting === site.name || isFetching || !!isToggling}
+                                                    >
+                                                        <Trash2 className={`h-4 w-4 ${isDeleting === site.name ? 'animate-pulse' : ''}`} />
+                                                    </Button>
+                                                </AlertDialogTrigger>
+                                            </div>
+                                        </TooltipTrigger>
+                                        <TooltipContent><p>Delete Site</p></TooltipContent>
+                                    </Tooltip>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                This action cannot be undone. This will permanently delete the
+                                                <strong className="mx-1">{site.name}</strong> site configuration file.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel disabled={isDeleting === site.name}>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction
+                                                onClick={() => handleDeleteSite(site.name)}
+                                                disabled={isDeleting === site.name}
+                                                variant="destructive"
+                                            >
+                                                {isDeleting === site.name ? 'Deleting...' : 'Yes, delete it'}
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                            </CardContent>
+                        </Card>
+                    ))}
+                </div>
+
+                 {/* Placeholder Create Dialog */}
                  <CreateSiteDialog isOpen={isCreateOpen} onClose={handleCloseDialogs} onSiteCreated={handleSiteCreated} />
-                 <EditSiteDialog site={selectedSite} isOpen={isEditOpen} onClose={handleCloseDialogs} onSiteUpdated={handleSiteUpdated} />
-                 <ViewSiteDialog site={selectedSite} isOpen={isViewOpen} onClose={handleCloseDialogs} />
-                 <DeleteSiteConfirmDialog siteName={selectedSite?.name} isOpen={isDeleteOpen} onClose={handleCloseDialogs} onSiteDeleted={handleSiteDeleted} />
 
             </div>
         </TooltipProvider>

@@ -171,28 +171,6 @@ const SiteConfigPage = () => {
     setSaveSuccess(false);
   };
 
-  // Rename site
-  const handleRenameSite = async () => {
-    if (!site || !newSiteName || site === newSiteName) {
-      setRenameDialogOpen(false);
-      return;
-    }
-    
-    setError(null);
-    
-    try {
-      await request(`/nginx/sites/${site}/rename`, {
-        method: 'POST',
-        body: JSON.stringify({ new_name: newSiteName }),
-      });
-      
-      // Redirect to the newly renamed site
-      router.push(`/dashboard/nginx/sites/${newSiteName}`);
-      setRenameDialogOpen(false);
-    } catch (err) {
-      console.error(`Failed to rename site from ${site} to ${newSiteName}:`, err);
-    }
-  };
 
   // Toggle editor theme
   const toggleTheme = () => {
@@ -242,29 +220,26 @@ const SiteConfigPage = () => {
                 Back to Sites
               </Link>
             </Button>
-            
-            {siteDetails && (
-              <div className="flex items-center">
-                <h1 className="text-xl font-bold flex items-center">
-                  <FileCode className="h-5 w-5 mr-2 text-primary" />
-                  {site}
-                </h1>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => setRenameDialogOpen(true)}
-                      className="ml-2"
-                    >
-                      <FileText className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent><p>Rename Site</p></TooltipContent>
-                </Tooltip>
-              </div>
-            )}
           </div>
+
+          <h3
+          className='text-lg font-semibold text-foreground'
+          >
+            {isLoading ? (
+              <Skeleton className="h-6 w-32" />
+            ) : (
+              <>
+                {siteDetails ? (
+                  <div className='flex items-center gap-2 p-3 rounded-2xl bg-secondary'>
+                    <FileText className="h-4 w-4 mr-1" />
+                    {siteDetails.name}
+                  </div>
+                ) : (
+                  <span>Site Configuration</span>
+                )}
+              </>
+            )}
+          </h3>
           
           <div className="flex items-center gap-2">
             {siteDetails && (
@@ -284,41 +259,7 @@ const SiteConfigPage = () => {
         </div>
         
         {/* Status & Information */}
-        {siteDetails && (
-          <Card className="mb-4">
-            <CardContent className="pt-6">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div>
-                  <p className="text-sm text-muted-foreground">Status</p>
-                  <p>
-                    <Badge variant={siteDetails.enabled ? "default" : "outline"}>
-                      {siteDetails.enabled ? 'Enabled' : 'Disabled'}
-                    </Badge>
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Last Modified</p>
-                  <p className="font-medium flex items-center">
-                    <Clock className="h-3 w-3 mr-1" />
-                    {formatDate(siteDetails.last_modified)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">File Path</p>
-                  <p className="font-medium text-sm">
-                    {siteDetails.file_path || 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-muted-foreground">Size</p>
-                  <p className="font-medium">
-                    {siteDetails.size_bytes ? `${(siteDetails.size_bytes / 1024).toFixed(2)} KB` : 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        
         
         {/* Success & Error Messages */}
         {saveSuccess && (
@@ -421,7 +362,7 @@ const SiteConfigPage = () => {
               </TabsList>
               <TabsContent value="editor" className="data-[state=active]:h-full m-0 border-none">
                 <MonacoEditor
-                  height="65vh"
+                  height="100%"
                   language="nginx"
                   theme={editorTheme}
                   value={siteConfig}
@@ -451,55 +392,6 @@ const SiteConfigPage = () => {
           Note: This will modify the site configuration file. Make sure to validate syntax before applying changes.
         </p>
 
-        {/* Rename Dialog */}
-        <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Rename Site</DialogTitle>
-              <DialogDescription>
-                Enter a new name for this site configuration.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="new-name" className="text-right">
-                  New Name
-                </Label>
-                <Input
-                  id="new-name"
-                  placeholder="example.com"
-                  value={newSiteName}
-                  onChange={(e) => setNewSiteName(e.target.value)}
-                  className="col-span-3"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleRenameSite} disabled={!newSiteName || site === newSiteName}>
-                Rename
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        {/* Floating Save Button */}
-        {hasChanges && (
-          <div className="fixed bottom-4 right-4 z-10">
-            <Button 
-              onClick={handleSave} 
-              variant="default" 
-              size="sm" 
-              disabled={isLoading}
-              className="shadow-lg"
-            >
-              <Save className="h-3.5 w-3.5 mr-2" />
-              Save Changes
-            </Button>
-          </div>
-        )}
       </div>
     </TooltipProvider>
   );

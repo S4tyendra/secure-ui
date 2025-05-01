@@ -5,7 +5,7 @@ class Config:
     APP_HOST: str = "localhost"
     APP_PORT: int = 5423
     SESSION_TOKEN_EXPIRE_MINUTES: int = 60 * 24
-    ALLOWED_ORIGINS: list[str] = []
+    ALLOWED_ORIGINS: list[str] = ["*"]
     NGINX_HOST: str = "localhost"
     NGINX_SITES_AVAILABLE: str = "/etc/nginx/sites-available"
     NGINX_SITES_ENABLED: str = "/etc/nginx/sites-enabled"

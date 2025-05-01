@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from .models import (
     SiteInfo, SiteCreate, SiteUpdate, NginxConf, LogInfo,
-    SiteActionStatus, LogActionStatus, ConfActionStatus
+    SiteActionStatus, LogActionStatus, ConfActionStatus, StructuredLogEntry
 )
 from . import nginx_manager
 from .nginx_manager import NginxManagementError
@@ -174,6 +174,32 @@ async def get_nginx_log_content(
          logger.exception(f"Unexpected error reading Nginx log {log_name}")
          raise HTTPException(status_code=500, detail="An unexpected server error occurred.")
 
+@nginx_router.get(
+    "/logs/{log_name}/structured",
+    summary="Get Structured Nginx Log Data (Last 30 Days)",
+    response_model=List[StructuredLogEntry] # Define the response model
+)
+async def get_structured_nginx_logs(
+    log_name: str,
+    days: int = Query(30, description="Number of past days to retrieve data for"),
+    current_user: dict = CurrentUser # Requires authentication
+):
+    """
+    Retrieves parsed and structured data from a specific Nginx log file
+    for the last N days (default 30). Useful for graphing and analysis.
+    Requires authentication.
+    """
+    if days <= 0:
+         raise HTTPException(status_code=400, detail="Number of days must be positive.")
+
+    try:
+        structured_data = nginx_manager.get_structured_logs(log_name, days=days)
+        return structured_data
+    except NginxManagementError as e:
+        handle_nginx_error(e)
+    except Exception as e:
+        logger.exception(f"Unexpected error processing Nginx log {log_name} for structured data")
+        raise HTTPException(status_code=500, detail="An unexpected server error occurred.")
 
 @nginx_router.delete("/logs/{log_name}", response_model=LogActionStatus, summary="Delete Nginx Log File")
 async def delete_nginx_log(log_name: str, current_user: dict = CurrentUser):

@@ -1,12 +1,15 @@
 import os
+import re
 import shutil
-import asyncio # Add asyncio for subprocesses
+import asyncio
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
+from datetime import datetime, timedelta, timezone
 
 from config import Config
 from helpers.logger import logger
-from .models import SiteInfo, LogInfo, NginxCommandStatus # Add NginxCommandStatus
+from .models import SiteInfo, LogInfo, NginxCommandStatus, StructuredLogEntry
 
 
 class NginxManagementError(Exception):
@@ -207,13 +210,119 @@ def get_log_content(log_name: str, tail_lines: Optional[int] = 100) -> str:
             if tail_lines is None or tail_lines <= 0:
                 return f.read()
             else:
-                # More efficient way to read last N lines might be needed for large files
-                # This is a simple approach
                 lines = f.readlines()
                 return "".join(lines[-tail_lines:])
     except OSError as e:
         logger.error(f"Error reading log file {log_file_path}: {e}")
         raise NginxManagementError(f"Could not read log file '{log_name}'. Check permissions.", 500)
+
+def get_structured_logs(log_name: str, days: int = 30) -> List[Dict]:
+        """
+        Reads a log file, parses lines, and filters for entries within the last N days.
+        Returns a list of dictionaries with structured log data.
+        """
+        
+        log_file_path = _get_log_path(log_name)
+        if not log_file_path.is_file():
+            raise NginxManagementError(f"Log file '{log_name}' not found.", 404)
+
+        structured_data: List[Dict] = []
+        cutoff_time = datetime.now(timezone.utc) - timedelta(days=days)
+
+        # Define a robust regex pattern for the log format
+        # Components: IP, _, _, [timestamp], "request", status, size, "referer", "user_agent"
+        log_pattern = re.compile(
+            r'(?P<ip>\S+)\s+-\s+-\s+'                       # IP address
+            r'\[(?P<timestamp>[^\]]+)\]\s+'               # Timestamp
+            r'"(?P<request>[^"]+)"\s+'                    # Request line
+            r'(?P<status>\d+)\s+'                         # Status code
+            r'(?P<size>\d+|-)\s+'                         # Response size
+            r'"(?P<referer>[^"]*)"\s+'                    # Referer (can be empty)
+            r'"(?P<user_agent>[^"]*)"'                    # User Agent (can be empty)
+        )
+
+        try:
+            # Read the entire file for parsing (consider streaming for very large files)
+            with open(log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                for line in f:
+                    match = log_pattern.match(line)
+                    if match:
+                        log_entry = match.groupdict()
+
+                        # --- Parse Timestamp ---
+                        # Expected format: 30/Apr/2025:23:52:59 +0000
+                        try:
+                            # %d/%b/%Y:%H:%M:%S %z
+                            # %d: Day of the month as a zero-padded decimal number.
+                            # %b: Abbreviated month name according to the locale. (Apr)
+                            # %Y: Year with century as a decimal number.
+                            # %H: Hour (24-hour clock) as a zero-padded decimal number.
+                            # %M: Minute as a zero-padded decimal number.
+                            # %S: Second as a zero-padded decimal number.
+                            # %z: UTC offset in the form +HHMM or -HHMM (empty string if the object is naive).
+                            log_timestamp = datetime.strptime(log_entry['timestamp'], '%d/%b/%Y:%H:%M:%S %z')
+
+                            # --- Filter by Date ---
+                            if log_timestamp < cutoff_time:
+                                continue # Skip entries older than the cutoff
+
+                        except ValueError:
+                            # Handle lines with invalid timestamp format
+                            logger.warning(f"Skipping log line due to invalid timestamp")
+                            continue
+
+                        # --- Parse Request Line ---
+                        # Request format: METHOD /path?query HTTP/Protocol
+                        request_parts = log_entry['request'].split(' ', 2)
+                        if len(request_parts) == 3:
+                            method = request_parts[0]
+                            path_query = request_parts[1]
+                            protocol = request_parts[2]
+
+                            # Parse path and query parameters
+                            parsed_url = urlparse(path_query)
+                            path = parsed_url.path
+                            query = parsed_url.query # This is the raw query string
+
+                            # Optional: Parse query string into a dict if needed later
+                            # from urllib.parse import parse_qs
+                            # query_params_dict = parse_qs(query)
+
+                        else:
+                            # Handle malformed request line
+                            logger.warning(f"Skipping log line due to malformed request")
+                            method, path, query, protocol = None, None, None, None # Or set to raw request string
+
+                        # --- Convert size to integer ---
+                        size = int(log_entry['size']) if log_entry['size'] != '-' else 0
+
+                        # --- Build Structured Data Dict ---
+                        structured_data.append({
+                            "timestamp": log_timestamp.isoformat(), # ISO 8601 format for JSON
+                            "date": log_timestamp.date().isoformat(), # Just the date
+                            "ip": log_entry['ip'],
+                            "method": method,
+                            "path": path, # Path without query
+                            "query": query, # Raw query string
+                            # "query_params": query_params_dict, # Uncomment if you parsed into a dict
+                            "protocol": protocol,
+                            "status_code": int(log_entry['status']),
+                            "response_size": size,
+                            "referer": log_entry['referer'] if log_entry['referer'] != '-' else None,
+                            "user_agent": log_entry['user_agent'] if log_entry['user_agent'] != '-' else None,
+                        })
+                    else:
+                        # Handle lines that don't match the regex (e.g., malformed lines, other log types)
+                        logger.debug(f"Skipping log line (no match)")
+
+
+        except OSError as e:
+            logger.error(f"Error reading log file {log_file_path}: {e}")
+            raise NginxManagementError(f"Could not read log file '{log_name}'. Check permissions.", 500)
+
+        # Sort the data by timestamp (optional, but good for time series)
+        # structured_data.sort(key=lambda x: x['timestamp']) # Already filtered by time, so perhaps not strictly needed if processing line by line
+        return structured_data
 
 def delete_log(log_name: str) -> None:
     """Deletes a log file."""

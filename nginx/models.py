@@ -48,3 +48,17 @@ class NginxCommandStatus(BaseModel):
     stderr: Optional[str] = None
     return_code: int
     message: str # User-friendly summary message
+
+class StructuredLogEntry(BaseModel):
+    """Pydantic model for a structured log entry."""
+    timestamp: str # ISO 8601 string
+    date: str      # YYYY-MM-DD string
+    ip: str
+    method: Optional[str]
+    path: Optional[str]
+    query: Optional[str]
+    protocol: Optional[str]
+    status_code: int
+    response_size: int
+    referer: Optional[str]
+    user_agent: Optional[str]

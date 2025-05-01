@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Activity, AlertCircle, ServerCrash, ShieldCheck, UploadCloud } from "lucide-react";
+import { Activity, AlertCircle, ServerCrash, ShieldCheck, UploadCloud, TrendingUpIcon, TrendingDownIcon } from "lucide-react"; // Added trend icons
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -28,27 +28,74 @@ export function SectionCards({
 }) {
 
   // Calculate aggregate metrics using useMemo
+  // Calculate aggregate metrics and trends using useMemo
   const metrics = React.useMemo(() => {
+    const defaultMetrics = {
+      totalRequests: 0, success: 0, clientErrors: 0, serverErrors: 0, totalBandwidth: 0,
+      requestsTrend: 0, successTrend: 0, clientErrorsTrend: 0, serverErrorsTrend: 0, bandwidthTrend: 0
+    };
+
     if (!logData || logData.length === 0) {
-      return { totalRequests: 0, success: 0, clientErrors: 0, serverErrors: 0, totalBandwidth: 0 };
+      return defaultMetrics;
     }
 
-    return logData.reduce(
-      (acc, hourData) => {
-        acc.success += hourData.status_2xx || 0;
-        // 3xx are also technically requests, count them in total
-        const redirects = hourData.status_3xx || 0;
-        acc.clientErrors += hourData.status_4xx || 0;
-        acc.serverErrors += hourData.status_5xx || 0;
-        acc.totalBandwidth += hourData.response_size || 0;
-        // Total requests = sum of all status counts for the hour
-        acc.totalRequests += (hourData.status_2xx || 0) + redirects + (hourData.status_4xx || 0) + (hourData.status_5xx || 0);
-        return acc;
-      },
-      { totalRequests: 0, success: 0, clientErrors: 0, serverErrors: 0, totalBandwidth: 0 }
-    );
+    // --- Calculate Totals ---
+    const totals = logData.reduce((acc, hourData) => {
+      acc.success += hourData.status_2xx || 0;
+      const redirects = hourData.status_3xx || 0;
+      acc.clientErrors += hourData.status_4xx || 0;
+      acc.serverErrors += hourData.status_5xx || 0;
+      acc.totalBandwidth += hourData.response_size || 0;
+      acc.totalRequests += (hourData.status_2xx || 0) + redirects + (hourData.status_4xx || 0) + (hourData.status_5xx || 0);
+      return acc;
+    }, { totalRequests: 0, success: 0, clientErrors: 0, serverErrors: 0, totalBandwidth: 0 });
+
+    // --- Calculate Trends (Last Hour vs Previous Hour) ---
+    let trends = { requestsTrend: 0, successTrend: 0, clientErrorsTrend: 0, serverErrorsTrend: 0, bandwidthTrend: 0 };
+    
+    if (logData.length >= 2) {
+      const lastHourData = logData[logData.length - 1];
+      const prevHourData = logData[logData.length - 2];
+
+      const calculateTrend = (current, previous) => {
+        if (previous === 0) {
+          return current > 0 ? 100 : 0; // Indicate growth if previous was zero, otherwise no change
+        }
+        return ((current - previous) / previous) * 100;
+      };
+
+      const lastHourRequests = (lastHourData.status_2xx || 0) + (lastHourData.status_3xx || 0) + (lastHourData.status_4xx || 0) + (lastHourData.status_5xx || 0);
+      const prevHourRequests = (prevHourData.status_2xx || 0) + (prevHourData.status_3xx || 0) + (prevHourData.status_4xx || 0) + (prevHourData.status_5xx || 0);
+      
+      trends.requestsTrend = calculateTrend(lastHourRequests, prevHourRequests);
+      trends.successTrend = calculateTrend(lastHourData.status_2xx || 0, prevHourData.status_2xx || 0);
+      trends.clientErrorsTrend = calculateTrend(lastHourData.status_4xx || 0, prevHourData.status_4xx || 0);
+      trends.serverErrorsTrend = calculateTrend(lastHourData.status_5xx || 0, prevHourData.status_5xx || 0);
+      trends.bandwidthTrend = calculateTrend(lastHourData.response_size || 0, prevHourData.response_size || 0);
+    }
+    
+    return { ...totals, ...trends };
+
   }, [logData]);
 
+  // Helper to format trend percentage and choose icon/color
+  const renderTrend = (trendValue) => {
+    if (logData.length < 2) return null; // Not enough data for trend
+
+    const value = trendValue.toFixed(1);
+    const isPositive = trendValue > 0;
+    const isNegative = trendValue < 0;
+    const Icon = isPositive ? TrendingUpIcon : isNegative ? TrendingDownIcon : null; // No icon if 0%
+    const colorClass = isPositive ? "text-green-600" : isNegative ? "text-red-600" : "text-muted-foreground";
+    const sign = isPositive ? "+" : ""; // Add '+' for positive values
+
+    return (
+      <span className={`ml-2 inline-flex items-center text-xs ${colorClass}`}>
+         {Icon && <Icon className="h-3 w-3 mr-0.5" />}
+         {sign}{value}% vs prev hour
+      </span>
+    );
+  };
   // Define card styles using chartConfig colors (provide fallbacks)
   const cardStyles = {
     requests: { iconColor: chartConfig.status_3xx?.color || "#3b82f6" }, // Use blue for general requests
@@ -103,7 +150,7 @@ export function SectionCards({
         <CardContent>
           <div className="text-2xl font-bold">{metrics.totalRequests.toLocaleString()}</div>
           <p className="text-xs text-muted-foreground">
-            From selected log over ~3 days
+            Over ~3 days {renderTrend(metrics.requestsTrend)}
           </p>
         </CardContent>
       </Card>
@@ -117,10 +164,10 @@ export function SectionCards({
         <CardContent>
            <div className="text-2xl font-bold">{metrics.success.toLocaleString()}</div>
            <p className="text-xs text-muted-foreground">
-             {metrics.totalRequests > 0 ? `${((metrics.success / metrics.totalRequests) * 100).toFixed(1)}%` : '0%'} success rate
+             {metrics.totalRequests > 0 ? `${((metrics.success / metrics.totalRequests) * 100).toFixed(1)}%` : '0%'} success rate {renderTrend(metrics.successTrend)}
            </p>
         </CardContent>
-      </Card>
+        </Card>
 
       {/* Client Errors (4xx) Card */}
        <Card>
@@ -131,7 +178,7 @@ export function SectionCards({
         <CardContent>
            <div className="text-2xl font-bold">{metrics.clientErrors.toLocaleString()}</div>
            <p className="text-xs text-muted-foreground">
-             User/request related issues
+             User/request issues {renderTrend(metrics.clientErrorsTrend)}
            </p>
         </CardContent>
       </Card>
@@ -145,7 +192,7 @@ export function SectionCards({
         <CardContent>
            <div className="text-2xl font-bold">{metrics.serverErrors.toLocaleString()}</div>
            <p className="text-xs text-muted-foreground">
-            Server-side application issues
+             Server-side issues {renderTrend(metrics.serverErrorsTrend)}
            </p>
         </CardContent>
       </Card>
@@ -158,9 +205,9 @@ export function SectionCards({
         </CardHeader>
         <CardContent>
            <div className="text-2xl font-bold">{formatBytes(metrics.totalBandwidth)}</div>
-            <p className="text-xs text-muted-foreground">
-             Total data served
-           </p>
+           <p className="text-xs text-muted-foreground">
+              Total data served {renderTrend(metrics.bandwidthTrend)}
+            </p>
         </CardContent>
       </Card>
 

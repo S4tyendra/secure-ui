@@ -37,21 +37,16 @@ import {
 
 const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: null,
+    email: null,
+    avatar: "https://cdn.iiitkota.ac.in/site/iiitkota.png",
   },
   navMain: [
     {
       title: "Dashboard",
       url: "/dashboard",
       icon: LayoutDashboardIcon,
-    },
-    {
-      title: "Analytics",
-      url: "#",
-      icon: BarChartIcon,
-    },
+    }
   ],
   nginx: [
     {

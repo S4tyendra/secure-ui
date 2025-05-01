@@ -23,33 +23,36 @@ export function NavMain({
 
   return (
     <SidebarGroup>
-      <SidebarGroupContent className="flex flex-col gap-2">
+      <SidebarGroupContent className="flex flex-col gap-4">
+        {/* Logo and brand section */}
         <SidebarMenu>
-          <SidebarMenuItem className="flex items-center gap-2">
-            <SidebarMenuButton
-              tooltip="Quick Create"
-              className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
+          <SidebarMenuItem className="mb-2">
+            <div 
+              className="flex items-center gap-3 text-sm font-semibold p-3 rounded-md hover:bg-accent/50 bg-primary/30 transition-colors"
+              onClick={() => router.push("/dashboard")}
+              style={{ color: "var(--sidebar-text-color)" }}
             >
-              <PlusCircleIcon />
-              <span>Quick Create</span>
-            </SidebarMenuButton>
-            <Button
-              size="icon"
-              className="h-9 w-9 shrink-0 group-data-[collapsible=icon]:opacity-0"
-              variant="outline"
-            >
-              <MailIcon />
-              <span className="sr-only">Inbox</span>
-            </Button>
+              <div className="flex items-center justify-center h-8 w-8 rounded-md bg-primary/10">
+                <PlusCircleIcon className="h-5 w-5 text-primary" />
+              </div>
+              <span className="text-base">Secure UI</span>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
-        <SidebarMenu>
+        
+        {/* Navigation items */}
+        <SidebarMenu className="px-2">
+          <div className="text-xs font-medium text-muted-foreground mb-2 px-2">Navigation</div>
           {items.map((item) => (
             <SidebarMenuItem key={item.title}>
-              <SidebarMenuButton tooltip={item.title} isActive={pathname.split('/').pop() === (item.title).toLowerCase().replaceAll(" ","-").replaceAll("_","-")} asChild>
-                <Link href={item.url}>
-                {item.icon && <item.icon />}
-                <span>{item.title}</span>
+              <SidebarMenuButton 
+                tooltip={item.title} 
+                isActive={pathname.split('/').pop() === (item.title).toLowerCase().replaceAll(" ","-").replaceAll("_","-")} 
+                asChild
+              >
+                <Link href={item.url} className="flex items-center gap-3">
+                  {item.icon ? <item.icon className="h-5 w-5" /> : <MailIcon className="h-5 w-5" />}
+                  <span>{item.title}</span>
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

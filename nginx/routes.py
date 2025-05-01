@@ -175,31 +175,28 @@ async def get_nginx_log_content(
          raise HTTPException(status_code=500, detail="An unexpected server error occurred.")
 
 @nginx_router.get(
-    "/logs/{log_name}/structured",
-    summary="Get Structured Nginx Log Data (Last 30 Days)",
-    response_model=List[StructuredLogEntry] # Define the response model
+    "/structured/logs",
+    summary="Get Combined Structured Nginx Access Logs",
+    response_model=List[StructuredLogEntry]
 )
-async def get_structured_nginx_logs(
-    log_name: str,
-    days: int = Query(30, description="Number of past days to retrieve data for"),
+async def get_combined_structured_nginx_logs(
     current_user: dict = CurrentUser # Requires authentication
 ):
     """
-    Retrieves parsed and structured data from a specific Nginx log file
-    for the last N days (default 30). Useful for graphing and analysis.
+    Retrieves and combines parsed structured data from Nginx access log files
+    (access.log and its rotations up to access.log.20). Useful for comprehensive
+    graphing and analysis of access patterns. Returns logs sorted newest first.
     Requires authentication.
     """
-    if days <= 0:
-         raise HTTPException(status_code=400, detail="Number of days must be positive.")
-
     try:
-        structured_data = nginx_manager.get_structured_logs(log_name, days=days)
+        structured_data = nginx_manager.get_combined_access_logs()
         return structured_data
     except NginxManagementError as e:
         handle_nginx_error(e)
     except Exception as e:
-        logger.exception(f"Unexpected error processing Nginx log {log_name} for structured data")
+        logger.exception("Unexpected error processing combined Nginx access logs")
         raise HTTPException(status_code=500, detail="An unexpected server error occurred.")
+
 
 @nginx_router.delete("/logs/{log_name}", response_model=LogActionStatus, summary="Delete Nginx Log File")
 async def delete_nginx_log(log_name: str, current_user: dict = CurrentUser):

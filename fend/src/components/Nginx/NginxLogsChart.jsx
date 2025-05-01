@@ -124,7 +124,7 @@ export function NginxLogsChart() {
     setError(null);
     try {
       // Fetch data for the current day (assuming backend handles this when 'days' is omitted)
-      const data = await request(`/nginx/logs/${logName}/structured`);
+      const data = await request(`/nginx/structured/logs`);
       
       // Process the data for the chart
       const processedData = processLogsData(data || []);

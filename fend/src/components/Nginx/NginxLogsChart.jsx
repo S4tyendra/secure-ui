@@ -45,7 +45,6 @@ const formatBytes = (bytes, decimals = 2) => {
 
 export function NginxLogsChart() {
   const isMobile = useIsMobile()
-  const [timeRange, setTimeRange] = React.useState("30d")
   const { request, loading, error, setError } = useApi();
   const [logs, setLogs] = React.useState([]);
   const [selectedLog, setSelectedLog] = React.useState(null);
@@ -84,16 +83,31 @@ export function NginxLogsChart() {
       const data = await request('/nginx/logs');
       setLogs(data || []);
       
-      // Select the largest non-gz log file
+      // Select 'access.log' if available, otherwise the largest non-gz log file
       if (data && data.length > 0) {
-        const filteredLogs = data.filter(log => !log.name.endsWith('.gz'));
-        if (filteredLogs.length > 0) {
-          const largestLog = filteredLogs.reduce((prev, current) => 
-            (prev.size_bytes > current.size_bytes) ? prev : current
-          );
-          setSelectedLog(largestLog);
+        const accessLog = data.find(log => log.name === 'access.log');
+        let logToSelect = null;
+
+        if (accessLog) {
+          logToSelect = accessLog;
+        } else {
+          // Fallback to largest non-gz log if access.log is not found
+          const filteredLogs = data.filter(log => !log.name.endsWith('.gz'));
+          if (filteredLogs.length > 0) {
+            logToSelect = filteredLogs.reduce((prev, current) =>
+              (prev.size_bytes > current.size_bytes) ? prev : current
+            );
+          }
+        }
+
+        if (logToSelect) {
+          setSelectedLog(logToSelect);
           // Fetch structured data for this log
-          fetchStructuredData(largestLog.name);
+          fetchStructuredData(logToSelect.name);
+        } else {
+            // Handle case where no suitable log file is found
+            setError("No suitable log file found (access.log or other non-gzipped log).");
+            setLogs([]); // Clear logs if none are suitable
         }
       }
     } catch (err) {
@@ -109,12 +123,8 @@ export function NginxLogsChart() {
     setIsLoading(true);
     setError(null);
     try {
-      // Get number of days based on timeRange
-      let days = 30;
-      if (timeRange === "7d") days = 7;
-      if (timeRange === "90d") days = 90;
-      
-      const data = await request(`/nginx/logs/${logName}/structured?days=${days}`);
+      // Fetch data for the current day (assuming backend handles this when 'days' is omitted)
+      const data = await request(`/nginx/logs/${logName}/structured`);
       
       // Process the data for the chart
       const processedData = processLogsData(data || []);
@@ -125,68 +135,59 @@ export function NginxLogsChart() {
     } finally {
       setIsLoading(false);
     }
-  }, [request, setError, timeRange]);
+  }, [request, setError]);
 
   // Process log data for the chart
   const processLogsData = (data) => {
-    // Group data by date
-    const groupedByDate = data.reduce((acc, entry) => {
-      // Create date groups
-      if (!acc[entry.date]) {
-        acc[entry.date] = {
-          date: entry.date,
-          status_2xx: 0,
-          status_3xx: 0,
-          status_4xx: 0,
-          status_5xx: 0,
-          response_size: 0
-        };
+    // Initialize 24 hours slots
+    const hourlyData = Array.from({ length: 24 }, (_, hour) => ({
+      hour: hour, // Store hour (0-23)
+      timeLabel: `${String(hour).padStart(2, '0')}:00`, // For display
+      status_2xx: 0,
+      status_3xx: 0,
+      status_4xx: 0,
+      status_5xx: 0,
+      response_size: 0
+    }));
+
+    // Group data by hour - assumes entry has a 'timestamp' field
+    data.forEach((entry) => {
+      try {
+        const timestamp = new Date(entry.timestamp); // Assuming 'timestamp' field exists
+        const hour = timestamp.getHours(); // Get hour (0-23)
+
+        if (hour >= 0 && hour < 24) {
+          const statusCode = entry.status_code;
+          const hourSlot = hourlyData[hour];
+
+          // Update counts based on status code
+          if (statusCode >= 200 && statusCode < 300) {
+            hourSlot.status_2xx += 1;
+          } else if (statusCode >= 300 && statusCode < 400) {
+            hourSlot.status_3xx += 1;
+          } else if (statusCode >= 400 && statusCode < 500) {
+            hourSlot.status_4xx += 1;
+          } else if (statusCode >= 500) {
+            hourSlot.status_5xx += 1;
+          }
+          
+          // Sum response sizes for the hour
+          hourSlot.response_size += entry.response_size;
+        }
+      } catch (e) {
+        console.error("Error processing timestamp for entry:", entry, e);
+        // Handle potential errors with timestamp parsing
       }
-      
-      // Update counts based on status code
-      const statusCode = entry.status_code;
-      if (statusCode >= 200 && statusCode < 300) {
-        acc[entry.date].status_2xx += 1;
-      } else if (statusCode >= 300 && statusCode < 400) {
-        acc[entry.date].status_3xx += 1;
-      } else if (statusCode >= 400 && statusCode < 500) {
-        acc[entry.date].status_4xx += 1;
-      } else if (statusCode >= 500) {
-        acc[entry.date].status_5xx += 1;
-      }
-      
-      // Sum response sizes for the day
-      acc[entry.date].response_size += entry.response_size;
-      
-      return acc;
-    }, {});
+    });
     
-    // Convert to array and sort by date
-    const chartData = Object.values(groupedByDate).sort((a, b) => 
-      new Date(a.date) - new Date(b.date)
-    );
-    
-    return chartData;
+    // The data is already sorted by hour (0-23) due to initialization
+    return hourlyData;
   };
 
   // Effect to initialize
   React.useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
-
-  // Effect to update data when timeRange changes
-  React.useEffect(() => {
-    if (selectedLog) {
-      fetchStructuredData(selectedLog.name);
-    }
-  }, [timeRange, selectedLog, fetchStructuredData]);
-
-  // Effect to handle mobile view
-  React.useEffect(() => {
-    if (isMobile) {
-      setTimeRange("7d");
-    }
-  }, [isMobile]);
 
   return (
     <Card className="@container/card">
@@ -212,42 +213,7 @@ export function NginxLogsChart() {
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
           
-          <ToggleGroup
-            type="single"
-            value={timeRange}
-            onValueChange={setTimeRange}
-            variant="outline"
-            className="@[767px]/card:flex hidden"
-          >
-            <ToggleGroupItem value="90d" className="h-8 px-2.5">
-              Last 90 days
-            </ToggleGroupItem>
-            <ToggleGroupItem value="30d" className="h-8 px-2.5">
-              Last 30 days
-            </ToggleGroupItem>
-            <ToggleGroupItem value="7d" className="h-8 px-2.5">
-              Last 7 days
-            </ToggleGroupItem>
-          </ToggleGroup>
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger
-              className="@[767px]/card:hidden flex w-40"
-              aria-label="Select time range"
-            >
-              <SelectValue placeholder="Last 30 days" />
-            </SelectTrigger>
-            <SelectContent className="rounded-xl">
-              <SelectItem value="90d" className="rounded-lg">
-                Last 90 days
-              </SelectItem>
-              <SelectItem value="30d" className="rounded-lg">
-                Last 30 days
-              </SelectItem>
-              <SelectItem value="7d" className="rounded-lg">
-                Last 7 days
-              </SelectItem>
-            </SelectContent>
-          </Select>
+          {/* Time range selection removed */}
         </div>
       </CardHeader>
       <CardContent className="px-2 pt-4 sm:px-6 sm:pt-6">
@@ -288,35 +254,33 @@ export function NginxLogsChart() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
-                  dataKey="date"
+                  dataKey="timeLabel" // Use the formatted hour label
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  minTickGap={32}
-                  tickFormatter={(value) => {
-                    const date = new Date(value);
-                    return date.toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                    });
-                  }}
+                  // Adjust minTickGap or interval if needed for hourly display
+                  // tickFormatter is no longer needed as timeLabel is pre-formatted
                 />
                 <YAxis />
                 <ChartTooltip
                   cursor={false}
                   content={
                     <ChartTooltipContent
-                      labelFormatter={(value) => {
-                        return new Date(value).toLocaleDateString("en-US", {
-                          month: "long",
-                          day: "numeric",
-                          year: "numeric"
-                        });
+                      labelFormatter={(label, payload) => {
+                        // Assuming payload[0].payload contains the hour data
+                        if (payload && payload.length > 0) {
+                           const hour = payload[0].payload.hour;
+                           const nextHour = (hour + 1) % 24;
+                           return `Time: ${String(hour).padStart(2, '0')}:00 - ${String(nextHour).padStart(2, '0')}:00`;
+                        }
+                        return label; // Fallback
                       }}
                       formatter={(value, name) => {
                         if (name === "response_size") {
                           return [formatBytes(value), "Response Size"];
                         }
+                        // Add a check for hour or timeLabel if needed
+                        if (name === "hour" || name === "timeLabel") return null; // Don't show hour/timeLabel in tooltip body
                         return [value, chartConfig[name]?.label || name];
                       }}
                       indicator="dot"

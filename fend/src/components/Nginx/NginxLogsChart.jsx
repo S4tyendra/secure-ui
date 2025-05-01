@@ -54,23 +54,23 @@ export function NginxLogsChart() {
   // Chart configuration - using HTTP status codes as categories
   const chartConfig = {
     status_2xx: {
-      label: "2xx Success",
+      label: " 2xx Success",
       color: "#22c55e", // Green
     },
     status_3xx: {
-      label: "3xx Redirection",
+      label: " 3xx Redirection",
       color: "#3b82f6", // Blue
     },
     status_4xx: {
-      label: "4xx Client Error",
+      label: " 4xx Client Error",
       color: "#f97316", // Orange
     },
     status_5xx: {
-      label: "5xx Server Error",
+      label: " 5xx Server Error",
       color: "#ef4444", // Red
     },
     response_size: {
-      label: "Response Size",
+      label: " Response Size",
       color: "#8b5cf6", // Purple
     }
   }
@@ -123,7 +123,7 @@ export function NginxLogsChart() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch data for the current day (assuming backend handles this when 'days' is omitted)
+      // Fetch data for the last 3 days by default
       const data = await request(`/nginx/structured/logs`);
       
       // Process the data for the chart
@@ -139,49 +139,69 @@ export function NginxLogsChart() {
 
   // Process log data for the chart
   const processLogsData = (data) => {
-    // Initialize 24 hours slots
-    const hourlyData = Array.from({ length: 24 }, (_, hour) => ({
-      hour: hour, // Store hour (0-23)
-      timeLabel: `${String(hour).padStart(2, '0')}:00`, // For display
-      status_2xx: 0,
-      status_3xx: 0,
-      status_4xx: 0,
-      status_5xx: 0,
-      response_size: 0
-    }));
-
-    // Group data by hour - assumes entry has a 'timestamp' field
-    data.forEach((entry) => {
+    const groupedByHour = data.reduce((acc, entry) => {
       try {
-        const timestamp = new Date(entry.timestamp); // Assuming 'timestamp' field exists
-        const hour = timestamp.getHours(); // Get hour (0-23)
+        const timestamp = new Date(entry.timestamp);
+        // Create a key representing the start of the hour (e.g., '2025-05-01T13:00:00.000Z')
+        const dateHourKey = new Date(
+          timestamp.getFullYear(),
+          timestamp.getMonth(),
+          timestamp.getDate(),
+          timestamp.getHours()
+        ).toISOString();
 
-        if (hour >= 0 && hour < 24) {
-          const statusCode = entry.status_code;
-          const hourSlot = hourlyData[hour];
-
-          // Update counts based on status code
-          if (statusCode >= 200 && statusCode < 300) {
-            hourSlot.status_2xx += 1;
-          } else if (statusCode >= 300 && statusCode < 400) {
-            hourSlot.status_3xx += 1;
-          } else if (statusCode >= 400 && statusCode < 500) {
-            hourSlot.status_4xx += 1;
-          } else if (statusCode >= 500) {
-            hourSlot.status_5xx += 1;
-          }
-          
-          // Sum response sizes for the hour
-          hourSlot.response_size += entry.response_size;
+        if (!acc[dateHourKey]) {
+          acc[dateHourKey] = {
+            dateTime: dateHourKey, // Store the ISO string key for sorting
+            label: "", // Will format later
+            status_2xx: 0,
+            status_3xx: 0,
+            status_4xx: 0,
+            status_5xx: 0,
+            response_size: 0
+          };
         }
+
+        const hourSlot = acc[dateHourKey];
+        const statusCode = entry.status_code;
+
+        // Update counts based on status code
+        if (statusCode >= 200 && statusCode < 300) {
+          hourSlot.status_2xx += 1;
+        } else if (statusCode >= 300 && statusCode < 400) {
+          hourSlot.status_3xx += 1;
+        } else if (statusCode >= 400 && statusCode < 500) {
+          hourSlot.status_4xx += 1;
+        } else if (statusCode >= 500) {
+          hourSlot.status_5xx += 1;
+        }
+        
+        // Sum response sizes for the hour
+        hourSlot.response_size += entry.response_size;
+
       } catch (e) {
         console.error("Error processing timestamp for entry:", entry, e);
-        // Handle potential errors with timestamp parsing
       }
-    });
-    
-    // The data is already sorted by hour (0-23) due to initialization
-    return hourlyData;
+      return acc;
+    }, {});
+
+    // Convert to array, format label, and sort
+    const chartData = Object.values(groupedByHour)
+      .sort((a, b) => new Date(a.dateTime) - new Date(b.dateTime)) // Sort chronologically
+      .map(item => {
+        const dt = new Date(item.dateTime);
+        // Format label like "May 1 13:00"
+        item.label = dt.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false // Use 24-hour format
+        }).replace(",", ""); // Remove comma after day
+        return item;
+      });
+
+    return chartData;
   };
 
   // Effect to initialize
@@ -254,33 +274,42 @@ export function NginxLogsChart() {
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis
-                  dataKey="timeLabel" // Use the formatted hour label
+                  dataKey="label" // Use the formatted date-time label
                   tickLine={false}
                   axisLine={false}
                   tickMargin={8}
-                  // Adjust minTickGap or interval if needed for hourly display
-                  // tickFormatter is no longer needed as timeLabel is pre-formatted
+                  minTickGap={60} // Increase gap to avoid clutter with date+time
+                  // tickFormatter is not needed as 'label' is pre-formatted
                 />
                 <YAxis />
                 <ChartTooltip
                   cursor={false}
                   content={
                     <ChartTooltipContent
-                      labelFormatter={(label, payload) => {
-                        // Assuming payload[0].payload contains the hour data
-                        if (payload && payload.length > 0) {
-                           const hour = payload[0].payload.hour;
-                           const nextHour = (hour + 1) % 24;
-                           return `Time: ${String(hour).padStart(2, '0')}:00 - ${String(nextHour).padStart(2, '0')}:00`;
+                    className="backdrop-blur-2xl bg-black/10 border border-black/20 dark:bg-white/10 dark:border-white/20"
+                       labelFormatter={(label, payload) => {
+                        // Derive the hour start/end from the dateTime key in the payload
+                        if (payload && payload.length > 0 && payload[0].payload.dateTime) {
+                           const startDt = new Date(payload[0].payload.dateTime);
+                           const endDt = new Date(startDt.getTime() + 60 * 60 * 1000); // Add 1 hour
+                           
+                           const formatOptions = {
+                             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false
+                           };
+
+                           const startStr = startDt.toLocaleDateString("en-US", formatOptions).replace(",", "");
+                           const endStr = endDt.toLocaleTimeString("en-US", {hour: '2-digit', minute: '2-digit', hour12: false }); // Only show time for end
+
+                           return `${startStr} - ${endStr}`;
                         }
-                        return label; // Fallback
+                        return label; // Fallback to the axis label
                       }}
-                      formatter={(value, name) => {
+                       formatter={(value, name) => {
                         if (name === "response_size") {
                           return [formatBytes(value), "Response Size"];
                         }
-                        // Add a check for hour or timeLabel if needed
-                        if (name === "hour" || name === "timeLabel") return null; // Don't show hour/timeLabel in tooltip body
+                        // Don't show internal keys in tooltip body
+                        if (name === "dateTime" || name === "label") return null;
                         return [value, chartConfig[name]?.label || name];
                       }}
                       indicator="dot"

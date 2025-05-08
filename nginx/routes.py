@@ -189,7 +189,7 @@ async def get_combined_structured_nginx_logs(
     Requires authentication.
     """
     try:
-        structured_data = nginx_manager.get_combined_access_logs()
+        structured_data = await nginx_manager.get_combined_access_logs()
         return structured_data
     except NginxManagementError as e:
         handle_nginx_error(e)

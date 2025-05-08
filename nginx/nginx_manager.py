@@ -2,6 +2,8 @@ import os
 import re
 import shutil
 import asyncio
+import aiofiles # Added for async file operations
+import aiofiles.os as aios # Added for async path checks
 from urllib.parse import urlparse
 from pathlib import Path
 from typing import List, Dict, Optional, Tuple
@@ -216,10 +218,11 @@ def get_log_content(log_name: str, tail_lines: Optional[int] = 100) -> str:
         logger.error(f"Error reading log file {log_file_path}: {e}")
         raise NginxManagementError(f"Could not read log file '{log_name}'. Check permissions.", 500)
 
-def get_combined_access_logs() -> List[StructuredLogEntry]:
+async def get_combined_access_logs() -> List[StructuredLogEntry]:
     """
-    Reads access.log and its rotated versions (access.log.1 to access.log.20),
-    parses lines, and combines them into a single list of structured log entries.
+    Asynchronously reads the last 1000 lines from access.log and its
+    rotated versions (access.log.1 to access.log.20), parses lines,
+    and combines them into a single list of structured log entries, sorted by timestamp.
     """
     log_dir = Path(Config.NGINX_LOG_DIR)
     combined_data: List[StructuredLogEntry] = []
@@ -227,12 +230,12 @@ def get_combined_access_logs() -> List[StructuredLogEntry]:
 
     # Find access.log and its rotations
     main_log = log_dir / "access.log"
-    if main_log.is_file():
+    if await aios.path.isfile(main_log):
         log_files_to_process.append(main_log)
 
     for i in range(1, 21): # Check for access.log.1 to access.log.20
         rotated_log = log_dir / f"access.log.{i}"
-        if rotated_log.is_file():
+        if await aios.path.isfile(rotated_log):
             log_files_to_process.append(rotated_log)
         else:
             # Stop if a rotated log is missing in the sequence
@@ -242,17 +245,8 @@ def get_combined_access_logs() -> List[StructuredLogEntry]:
         logger.warning("No access log files (access.log, access.log.1...) found.")
         return []
 
-    # Define a robust regex pattern for the log format
-    # Components: IP, _, _, [timestamp], "request", status, size, "referer", "user_agent"
-        log_pattern = re.compile(
-            r'(?P<ip>\S+)\s+-\s+-\s+'                       # IP address
-            r'\[(?P<timestamp>[^\]]+)\]\s+'               # Timestamp
-            r'"(?P<request>[^"]+)"\s+'                    # Request line
-            r'(?P<status>\d+)\s+'                         # Status code
-            r'(?P<size>\d+|-)\s+'                         # Response size
-            r'"(?P<referer>[^"]*)"\s+'                    # Referer (can be empty)
-            r'"(?P<user_agent>[^"]*)"'                    # User Agent (can be empty)
-        )
+    # Reverse the order to process newest files first, helpful for getting recent 1000 lines
+    log_files_to_process.reverse()
 
     log_pattern = re.compile(
         r'(?P<ip>\S+)\s+-\s+-\s+'                       # IP address
@@ -267,8 +261,25 @@ def get_combined_access_logs() -> List[StructuredLogEntry]:
     for log_file_path in log_files_to_process:
         logger.info(f"Processing log file: {log_file_path.name}")
         try:
-            with open(log_file_path, 'r', encoding='utf-8', errors='ignore') as f:
-                for line_num, line in enumerate(f, 1):
+            # Read file from bottom if we want to optimize for last N lines
+            # However, parsing still needs to happen line by line.
+            # For simplicity and given the requirement to sort all entries at the end,
+            # reading the whole file (or relevant parts) and then truncating is fine.
+            async with aiofiles.open(log_file_path, mode='r', encoding='utf-8', errors='ignore') as f:
+                lines_in_file = []
+                async for line in f:
+                    lines_in_file.append(line)
+                
+                # Process lines from the end of the file
+                for line_num, line in enumerate(reversed(lines_in_file), 1):
+                    if len(combined_data) >= 1000 and log_file_path != (log_dir / "access.log"): # Heuristic: if we have 1000 from rotated, main log might push older ones out
+                        # This is a soft limit per file if not the main access.log,
+                        # actual truncation happens after global sort.
+                        # A more precise approach would be to collect all, then sort, then truncate.
+                        # Given the requirements, we will collect all, sort, then truncate.
+                        pass
+
+
                     match = log_pattern.match(line)
                     if match:
                         log_entry = match.groupdict()
@@ -339,8 +350,9 @@ def get_combined_access_logs() -> List[StructuredLogEntry]:
     # Sort the combined data by timestamp (descending - newest first)
     combined_data.sort(key=lambda x: x.timestamp, reverse=True)
 
-    logger.info(f"Combined {len(combined_data)} entries from {len(log_files_to_process)} access log files.")
-    return combined_data
+    final_entries = combined_data[:1000]
+    logger.info(f"Returning {len(final_entries)} most recent entries from {len(log_files_to_process)} access log files (up to 1000 requested).")
+    return final_entries
 
 def delete_log(log_name: str) -> None:
     """Deletes a log file."""

@@ -12,7 +12,7 @@ export default function AccountPage() {
   const [userData, setUserData] = React.useState(null);
   const avatarUrl = "https://cdn.iiitkota.ac.in/site/iiitkota.png"; // Static image
 
-  React.useEffect(() => {
+  React.useEffect(() => { 
     const fetchUserData = async () => {
       try {
         const data = await request('/auth/users/me');

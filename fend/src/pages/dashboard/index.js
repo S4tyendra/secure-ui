@@ -1,34 +1,45 @@
 import * as React from "react";
-import useApi from "@/hooks/useApi"; // Import useApi hook
+import useApi from "@/hooks/useApi";
 import { SectionCards } from "@/components/Layout/section-cards";
-import { NginxLogsChart } from "@/components/Nginx/NginxLogsChart";
+import LogsDashboard from "@/components/Nginx/logs-dashboard"
 
-// Helper function to format bytes (can be moved to a utils file later)
+
 const formatBytes = (bytes, decimals = 2) => {
-  if (bytes === 0 || !bytes) return '0 Bytes'; // Add check for null/undefined
-  if (isNaN(bytes)) return 'NaN Bytes'; // Add check for NaN
+  if (bytes === 0 || !bytes) return '0 Bytes';
+  if (isNaN(bytes)) return 'NaN Bytes';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
   const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-   // Handle edge case where bytes is less than 1 but not 0
    if (bytes < 1 && bytes > 0) return bytes.toFixed(dm) + ' Bytes';
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-   // Ensure i is within the bounds of the sizes array
    const index = Math.max(0, Math.min(i, sizes.length - 1));
   return parseFloat((bytes / Math.pow(k, index)).toFixed(dm)) + ' ' + sizes[index];
 };
 
 
-// Process log data for the chart (moved from NginxLogsChart)
 const processLogsData = (data) => {
+    // Sort data by timestamp first to ensure correct processing
+    data.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    
+    // Take first and last entries for smart scaling
+    const firstEntry = data[0];
+    const lastEntry = data[data.length - 1];
+    const totalTimespan = new Date(lastEntry.timestamp) - new Date(firstEntry.timestamp);
+    
+    // Calculate optimal hour grouping based on timespan
+    const hours = Math.ceil(totalTimespan / (1000 * 60 * 60));
+    const groupingHours = Math.max(1, Math.floor(hours / 24)); // Aim for roughly 24 data points
+    
     const groupedByHour = data.reduce((acc, entry) => {
       try {
         const timestamp = new Date(entry.timestamp);
+        // Group by multiple hours if needed
+        const roundedHours = Math.floor(timestamp.getHours() / groupingHours) * groupingHours;
         const dateHourKey = new Date(
           timestamp.getFullYear(),
           timestamp.getMonth(),
           timestamp.getDate(),
-          timestamp.getHours()
+          roundedHours
         ).toISOString();
 
         if (!acc[dateHourKey]) {
@@ -56,7 +67,6 @@ const processLogsData = (data) => {
           hourSlot.status_5xx += 1;
         }
         
-        // Ensure response_size is a number before adding
         hourSlot.response_size += Number(entry.response_size) || 0;
 
       } catch (e) {
@@ -88,44 +98,39 @@ export default function Page() {
   const [logs, setLogs] = React.useState([]);
   const [selectedLog, setSelectedLog] = React.useState(null);
   const [logData, setLogData] = React.useState([]);
-  const [isLoading, setIsLoading] = React.useState(false); // Combined loading state
+  const [isLoading, setIsLoading] = React.useState(false);
 
-  // Chart configuration (moved from NginxLogsChart)
    const chartConfig = {
-    status_2xx: { label: " 2xx Success", color: "#22c55e" }, // Green
-    status_3xx: { label: " 3xx Redirection", color: "#3b82f6" }, // Blue
-    status_4xx: { label: " 4xx Client Error", color: "#f97316" }, // Orange
-    status_5xx: { label: " 5xx Server Error", color: "#ef4444" }, // Red
-    response_size: { label: " Response Size", color: "#8b5cf6" } // Purple
+    status_2xx: { label: " 2xx Success", color: "#22c55e" },
+    status_3xx: { label: " 3xx Redirection", color: "#3b82f6" },
+    status_4xx: { label: " 4xx Client Error", color: "#f97316" },
+    status_5xx: { label: " 5xx Server Error", color: "#ef4444" },
+    response_size: { label: " Response Size", color: "#8b5cf6" }
   };
 
 
-  // Function to fetch structured data (moved from NginxLogsChart)
   const fetchStructuredData = React.useCallback(async (logName) => {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch data for the last 3 days by default
       const data = await request(`/nginx/structured/logs`);
       const processedData = processLogsData(data || []);
       setLogData(processedData);
     } catch (err) {
       console.error(`Failed to fetch structured data for log ${logName}:`, err);
-       // Propagate error from useApi or set a generic one
        setError(err?.message || `Failed to fetch structured data for log ${logName}`);
       setLogData([]);
     } finally {
       setIsLoading(false);
     }
-  }, [request, setError]); // Added setError dependency
+  }, [request, setError]); 
 
 
-  // Function to fetch logs list (moved from NginxLogsChart)
   const fetchLogs = React.useCallback(async () => {
-    setIsLoading(true); // Set combined loading state
+    setIsLoading(true);
     setError(null);
-    setSelectedLog(null); // Reset selection
-    setLogData([]); // Clear previous data
+    setSelectedLog(null);
+    setLogData([]);
     try {
       const data = await request('/nginx/logs');
       setLogs(data || []);
@@ -147,43 +152,37 @@ export default function Page() {
 
         if (logToSelect) {
           setSelectedLog(logToSelect);
-          // Fetch structured data immediately after selecting the log
-          await fetchStructuredData(logToSelect.name); // Await this call
+          await fetchStructuredData(logToSelect.name);
         } else {
           setError("No suitable log file found (access.log or other non-gzipped log).");
           setLogs([]);
         }
       } else {
-         setError("No log files found."); // Handle case where no logs are returned
+         setError("No log files found.");
       }
     } catch (err) {
       console.error("Failed to fetch logs:", err);
-       // Propagate error from useApi or set a generic one
        setError(err?.message || "Failed to fetch logs list.");
       setLogs([]);
     } finally {
-      // Loading state is handled within fetchStructuredData now if a log is selected
-       if (!selectedLog) { // Only set loading false if no log was selected to fetch data for
+       if (!selectedLog) {
          setIsLoading(false);
        }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [request, setError, fetchStructuredData]); // Add fetchStructuredData dependency
+  }, [request, setError, fetchStructuredData]);
 
 
-   // Effect to initialize on mount
   React.useEffect(() => {
     fetchLogs();
-  }, [fetchLogs]); // fetchLogs is memoized, so this runs once on mount
+  }, [fetchLogs]);
 
-  // Combine loading states
   const combinedIsLoading = isLoading || apiLoading;
   const combinedError = apiError;
 
 
   return (
     <>
-      {/* Pass data and loading/error states to SectionCards */}
       <SectionCards
           logData={logData}
           isLoading={combinedIsLoading}
@@ -191,16 +190,8 @@ export default function Page() {
           chartConfig={chartConfig}
           formatBytes={formatBytes}
        />
-      <div className="px-4 lg:px-6 mt-6"> {/* Add some margin top */}
-        {/* Pass data, loading/error states, config, and refresh function to NginxLogsChart */}
-        <NginxLogsChart
-            logData={logData}
-            isLoading={combinedIsLoading}
-            error={combinedError}
-            selectedLog={selectedLog}
-            chartConfig={chartConfig}
-            fetchLogs={fetchLogs} // Pass the refresh function
-         />
+      <div className="px-4 lg:px-6 mt-6">
+        <LogsDashboard />
       </div>
     </>
   );

@@ -221,17 +221,14 @@ def get_log_content(log_name: str, tail_lines: Optional[int] = 100) -> str:
 
 async def get_combined_access_logs() -> List[StructuredLogEntry]:
     """
-    Asynchronously reads access.log. If the file is larger than 10MB,
-    it processes the last 10MB chunk from a temporary file (with the first line of the chunk removed).
-    Parses lines and returns up to 1000 most recent structured log entries, sorted by timestamp.
+    Efficiently processes extremely large log files (100GB+) by using 
+    a streaming approach to read only the last 10MB and process it line by line.
     """
     log_dir = Path(Config.NGINX_LOG_DIR)
     main_log_path = log_dir / "access.log"
     combined_data: List[StructuredLogEntry] = []
     TEN_MB = 10 * 1024 * 1024
-    actual_file_to_process_path: Path = main_log_path
-    temp_file_name: Optional[str] = None
-
+    BUFFER_SIZE = 8192  # 8KB buffer size for efficient streaming
 
     if not await aios.path.isfile(main_log_path):
         logger.warning(f"Main access log file not found: {main_log_path}")
@@ -239,71 +236,90 @@ async def get_combined_access_logs() -> List[StructuredLogEntry]:
 
     try:
         file_size = await aios.path.getsize(main_log_path)
-
-        if file_size > TEN_MB:
-            logger.info(f"{main_log_path.name} is larger than 10MB ({file_size} bytes). Processing last 10MB.")
-            
-            # Create a temporary file to write the chunk into
-            # delete=False is important as aiofiles.open will open it by name
-            # and we need to manage its lifecycle.
-            with tempfile.NamedTemporaryFile(delete=False, mode='w') as tmp_sync_fp:
-                temp_file_name = tmp_sync_fp.name
-            
-            actual_file_to_process_path = Path(temp_file_name)
-
-            async with aiofiles.open(main_log_path, mode='rb') as main_fp_rb: # Read as bytes
-                await main_fp_rb.seek(file_size - TEN_MB)
-                chunk_bytes = await main_fp_rb.read(TEN_MB)
-            
-            # Decode and split into lines, then remove the first line
-            try:
-                chunk_str = chunk_bytes.decode('utf-8', errors='ignore')
-                lines_in_chunk = chunk_str.splitlines(keepends=True)
-                if lines_in_chunk:
-                    logger.debug(f"Removing potentially partial first line from 10MB chunk: {lines_in_chunk[0].strip()}")
-                    lines_to_write = lines_in_chunk[1:]
-                else:
-                    lines_to_write = []
-            except Exception as decode_err:
-                logger.error(f"Error decoding 10MB chunk from {main_log_path.name}: {decode_err}")
-                # Fallback to empty list or re-raise, for now, proceed with empty.
-                lines_to_write = []
-
-
-            async with aiofiles.open(temp_file_name, mode='w', encoding='utf-8') as tmp_aio_fp_w:
-                for line in lines_to_write:
-                    await tmp_aio_fp_w.write(line)
-            
-            logger.info(f"Last 10MB (minus first line) written to temporary file: {temp_file_name}")
-        else:
+        
+        if file_size <= TEN_MB:
+            # If file is small enough, process it directly line by line
             logger.info(f"{main_log_path.name} is {file_size} bytes. Processing directly.")
-            # actual_file_to_process_path is already main_log_path by default
+            return await process_log_file(main_log_path, 0)
+        
+        # For large files, start from 10MB before the end
+        start_pos = max(0, file_size - TEN_MB)
+        logger.info(f"{main_log_path.name} is {file_size} bytes. Processing last 10MB starting at position {start_pos}.")
+        
+        # Process from the calculated position
+        return await process_log_file(main_log_path, start_pos)
+            
+    except Exception as e:
+        logger.error(f"Error determining file size: {e}")
+        return []
 
+
+async def process_log_file(file_path: Path, start_position: int) -> List[StructuredLogEntry]:
+    """
+    Process a log file starting from the specified position.
+    Uses a streaming approach to handle very large files efficiently.
+    """
+    combined_data = []
+    log_lines = []
+    skip_first_line = start_position > 0
+    
+    try:
+        async with aiofiles.open(file_path, mode='rb') as log_file:
+            if start_position > 0:
+                await log_file.seek(start_position)
+                
+            # Process first line separately if we started mid-file
+            if skip_first_line:
+                first_line = await log_file.readline()  # Skip potentially partial line
+                
+            # Read and store lines (limiting to last 2000 to ensure we get 1000 valid entries)
+            buffer = bytearray()
+            chunk = await log_file.read(8192)  # Read in reasonable chunks
+            
+            while chunk:
+                buffer.extend(chunk)
+                
+                # Process complete lines from buffer
+                while b'\n' in buffer:
+                    # Split at first newline
+                    line_end = buffer.find(b'\n') + 1
+                    line = buffer[:line_end].decode('utf-8', errors='ignore').strip()
+                    buffer = buffer[line_end:]
+                    
+                    if line:  # Skip empty lines
+                        log_lines.append(line)
+                        # Keep only last 2000 lines to save memory
+                        if len(log_lines) > 2000:
+                            log_lines.pop(0)
+                
+                chunk = await log_file.read(8192)
+            
+            # Process any remaining data in buffer
+            if buffer:
+                line = buffer.decode('utf-8', errors='ignore').strip()
+                if line:
+                    log_lines.append(line)
+                    if len(log_lines) > 2000:
+                        log_lines.pop(0)
+        
+        # Parse log entries (processing from newest to oldest)
         log_pattern = re.compile(
             r'(?P<ip>\S+)\s+-\s+-\s+'           # IP address
-            r'\[(?P<timestamp>[^\]]+)\]\s+'   # Timestamp
-            r'"(?P<request>[^"]+)"\s+'        # Request line
-            r'(?P<status>\d+)\s+'             # Status code
-            r'(?P<size>\d+|-)\s+'             # Response size
-            r'"(?P<referer>[^"]*)"\s+'        # Referer
-            r'"(?P<user_agent>[^"]*)"'        # User Agent
+            r'\[(?P<timestamp>[^\]]+)\]\s+'     # Timestamp
+            r'"(?P<request>[^"]+)"\s+'          # Request line
+            r'(?P<status>\d+)\s+'               # Status code
+            r'(?P<size>\d+|-)\s+'               # Response size
+            r'"(?P<referer>[^"]*)"\s+'          # Referer
+            r'"(?P<user_agent>[^"]*)"'          # User Agent
         )
-
-        logger.info(f"Starting to parse log data from: {actual_file_to_process_path.name}")
         
-        # Collect all lines from the file to be processed, then reverse
-        all_lines_from_file = []
-        async with aiofiles.open(actual_file_to_process_path, mode='r', encoding='utf-8', errors='ignore') as f_process:
-            async for line in f_process:
-                all_lines_from_file.append(line)
-
-        # Process lines from the end of the list (effectively end of file/chunk)
-        for line_num_in_reversed_list, line_content in enumerate(reversed(all_lines_from_file), 1):
+        # Process lines from newest to oldest
+        for line in reversed(log_lines):
             if len(combined_data) >= 1000:
-                logger.info(f"Collected 1000 entries from {actual_file_to_process_path.name}, stopping further processing of this file.")
                 break
-            
-            match = log_pattern.match(line_content)
+                
+            # Rest of parsing logic remains the same as your original code
+            match = log_pattern.match(line)
             if match:
                 log_entry = match.groupdict()
                 log_timestamp = None
@@ -311,7 +327,7 @@ async def get_combined_access_logs() -> List[StructuredLogEntry]:
                 try:
                     log_timestamp = datetime.strptime(log_entry['timestamp'], '%d/%b/%Y:%H:%M:%S %z')
                 except ValueError:
-                    logger.warning(f"Skipping line in {actual_file_to_process_path.name} (original line number unknown due to chunking/reversal): Invalid timestamp '{log_entry['timestamp']}'")
+                    logger.warning(f"Invalid timestamp '{log_entry['timestamp']}'")
                     continue
 
                 method, path, query, protocol = None, None, None, None
@@ -324,12 +340,13 @@ async def get_combined_access_logs() -> List[StructuredLogEntry]:
                     path = parsed_url.path
                     query = parsed_url.query
                 else:
-                    logger.warning(f"Skipping line in {actual_file_to_process_path.name}: Malformed request line '{log_entry['request']}'")
+                    logger.warning(f"Malformed request line '{log_entry['request']}'")
+                    continue
 
                 try:
                    size = int(log_entry['size']) if log_entry['size'] != '-' else 0
                 except ValueError:
-                     logger.warning(f"Skipping line in {actual_file_to_process_path.name}: Invalid size value '{log_entry['size']}'")
+                     logger.warning(f"Invalid size value '{log_entry['size']}'")
                      size = 0
 
                 try:
@@ -348,28 +365,16 @@ async def get_combined_access_logs() -> List[StructuredLogEntry]:
                     )
                     combined_data.append(entry)
                 except Exception as model_err:
-                     logger.warning(f"Skipping line in {actual_file_to_process_path.name}: Error creating model instance - {model_err}")
-            else:
-                if line_content.strip():
-                   logger.debug(f"Line in {actual_file_to_process_path.name} did not match log pattern: {line_content.strip()}")
-
-    except OSError as e:
-        logger.error(f"OSError during log processing for {main_log_path}: {e}")
+                     logger.warning(f"Error creating model instance - {model_err}")
+        
+        # Sort final entries by timestamp
+        combined_data.sort(key=lambda x: x.timestamp, reverse=True)
+        logger.info(f"Returning {len(combined_data)} most recent entries from access.log (up to 1000 requested).")
+        return combined_data
+            
     except Exception as e:
-        logger.error(f"Unexpected error during log processing for {main_log_path}: {e}")
-    finally:
-        if temp_file_name:
-            try:
-                await aios.remove(temp_file_name)
-                logger.info(f"Successfully deleted temporary log file: {temp_file_name}")
-            except OSError as e_remove:
-                logger.error(f"Error deleting temporary log file {temp_file_name}: {e_remove}")
-
-    combined_data.sort(key=lambda x: x.timestamp, reverse=True)
-    # Limit is applied during collection, but sort is final.
-    # The list 'combined_data' will already contain at most 1000 entries.
-    logger.info(f"Returning {len(combined_data)} most recent entries from access.log processing (up to 1000 requested).")
-    return combined_data
+        logger.error(f"Error processing log file: {e}")
+        return []
 
 def delete_log(log_name: str) -> None:
     """Deletes a log file."""
